@@ -113,16 +113,17 @@ ChatLesson client component
 ### Resume correctness invariants
 
 1. `pickResumeLesson` returns the lowest-`order` lesson whose progress row is missing or has `completed = false`. (If everything is complete, it returns the last lesson.)
-2. `canEnterLesson(lessons, learnerId, targetId)` enforces ordering: the learner can only enter a lesson whose predecessors are all complete. This is the **single policy owner** for the sequential-path rule. The course overview uses it to mark future lessons as `Locked` instead of rendering a link, the lesson page uses it to `redirect()` a direct URL to a locked future lesson back to the resume lesson, and the chat-lesson client uses the `complete` flag to suppress the in-lesson `Next lesson` action until the current lesson is done.
+2. `canEnterLesson(lessons, learnerId, targetId)` enforces ordering: the learner can only enter a lesson whose predecessors are all complete. This is the **single policy owner** for the sequential-path rule. The course overview uses it to mark future lessons as `Locked`, the lesson page redirects a locked URL, and the shared service rejects seed, message, and completion mutations for locked lessons. The chat client suppresses `Next lesson` until completion.
 3. Progress is upserted, not inserted, on every learner action — this makes resume idempotent across repeated sends.
 
 ### Sequential-path enforcement
 
-The UI and routes apply `canEnterLesson` at three points:
+The UI, pages, and mutation boundary apply `canEnterLesson` at four points:
 
 - **Course overview** (`src/app/courses/[slug]/page.tsx`) — for each lesson, compute `isLocked = !isDone && !canEnterLesson(...)`. Locked lessons render the `Locked` badge and a short explanation instead of a `Review`/`Continue`/`Start` link. Previously-completed lessons remain `Done` + `Review`; the resume lesson is `Current` + `Continue`.
 - **Lesson page** (`src/app/courses/[slug]/lessons/[lessonSlug]/page.tsx`) — before rendering the chat, if `canEnterLesson(...)` is false for the requested lesson, the page calls `redirect()` to `/courses/:slug/lessons/:resumeLessonSlug`. Past completed lessons and the resume lesson itself are always enterable.
 - **Chat lesson** (`src/app/courses/[slug]/lessons/[lessonSlug]/chat-lesson.tsx`) — the in-lesson `Next lesson →` link is only rendered when `complete && hasNext`. It becomes available immediately after the lesson flips to complete via either a scripted terminal turn or the explicit `Mark complete` button.
+- **Lesson service and APIs** (`src/lib/service.ts`) — `requireEnterableLesson` applies the same policy before seeding chat, accepting a learner message, or marking a lesson complete. Locked mutations return `409`, so callers cannot bypass the page by posting directly to an API route.
 
 ## Dashboard flow (multi-course)
 

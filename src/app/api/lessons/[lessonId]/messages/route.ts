@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { sendTurn, NotFoundError, BadInputError } from "@/lib/service";
+import {
+  sendTurn,
+  NotFoundError,
+  BadInputError,
+  LockedLessonError,
+} from "@/lib/service";
 import { getCurrentLearnerId } from "@/lib/learner";
 
 /**
@@ -56,6 +61,9 @@ export async function POST(
     }
     if (e instanceof BadInputError) {
       return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+    if (e instanceof LockedLessonError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

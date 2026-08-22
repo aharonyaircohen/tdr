@@ -26,6 +26,9 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
   const completedCount = course.lessons.filter((l) =>
     l.progress.some((p) => p.learnerId === learnerId && p.completed),
   ).length;
+  const hasCourseProgress = course.lessons.some((l) =>
+    l.progress.some((p) => p.learnerId === learnerId),
+  );
 
   return (
     <main className="container">
@@ -101,7 +104,11 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
                     style={{ marginLeft: 12 }}
                     data-testid={`lesson-link-${lesson.slug}`}
                   >
-                    {isDone ? "Review" : isCurrent ? "Continue" : "Start"} →
+                    {isDone
+                      ? "Review"
+                      : isCurrent && hasCourseProgress
+                        ? "Continue"
+                        : "Start"} →
                   </Link>
                 )}
               </li>

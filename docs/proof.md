@@ -29,7 +29,9 @@ This document captures the proof artifacts for the TDR learner journey on
   explanation) instead of `Up next`, a direct URL to a locked future
   lesson `redirect()`s to the resume lesson in the same course, and the
   in-lesson **Next lesson →** action only appears once the current
-  lesson is complete. Past completed lessons remain reviewable.
+  lesson is complete. The seed, message, and completion APIs enforce the
+  same rule and return `409` for locked mutations. Past completed lessons
+  remain reviewable.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.

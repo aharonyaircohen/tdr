@@ -393,6 +393,42 @@ describe("sequential path gating (canEnterLesson)", () => {
     expect(canEnterLesson(course.lessons, learner, resume!.id)).toBe(true);
   });
 
+  it("rejects seed, message, and completion mutations for a locked lesson", async () => {
+    const { lessons } = await seedFixtures();
+    process.env.CURRENT_LEARNER_ID = "test-learner";
+    const context = { params: Promise.resolve({ lessonId: lessons[1].id }) };
+    const seedRoute = await import("@/app/api/lessons/[lessonId]/seed/route");
+    const messageRoute = await import(
+      "@/app/api/lessons/[lessonId]/messages/route"
+    );
+    const completeRoute = await import(
+      "@/app/api/lessons/[lessonId]/complete/route"
+    );
+
+    const seedResponse = await seedRoute.POST(
+      new Request("http://localhost/seed", { method: "POST" }),
+      context,
+    );
+    const messageResponse = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "yes" }),
+      }),
+      context,
+    );
+    const completeResponse = await completeRoute.POST(
+      new Request("http://localhost/complete", { method: "POST" }),
+      context,
+    );
+
+    expect(seedResponse.status).toBe(409);
+    expect(messageResponse.status).toBe(409);
+    expect(completeResponse.status).toBe(409);
+    expect(await prisma.message.count({ where: { lessonId: lessons[1].id } })).toBe(0);
+    expect(await prisma.progress.count({ where: { lessonId: lessons[1].id } })).toBe(0);
+  });
+
   it("still locks lesson 2 while lesson 1 is in-progress but not complete", async () => {
     const { lessons } = await seedFixtures();
     const learner = "test-learner";
