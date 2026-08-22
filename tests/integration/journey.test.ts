@@ -692,6 +692,21 @@ describe("multi-course dashboard helpers", () => {
     });
   }
 
+  async function seedTwoCoursesInProgress() {
+    const seeded = await seedTwoCourses();
+    const longScript = JSON.stringify([
+      { kind: "tutor", content: "Long intro" },
+      { kind: "learner", prompt: "ready", expect: ["yes", "ok"] },
+      { kind: "tutor", content: "Long middle" },
+      { kind: "learner", prompt: "go", expect: ["go", "next"] },
+      { kind: "tutor", content: "Long middle 2" },
+      { kind: "learner", prompt: "more", expect: ["more", "continue"] },
+      { kind: "tutor", content: "Long done" },
+    ]);
+    await prisma.lesson.updateMany({ data: { script: longScript } });
+    return seeded;
+  }
+
   it("reports independent per-course state with no shared progress", async () => {
     await seedTwoCourses();
     process.env.CURRENT_LEARNER_ID = "iso-learner";
@@ -789,6 +804,122 @@ describe("multi-course dashboard helpers", () => {
     process.env.CURRENT_LEARNER_ID = "other-learner";
     const c = await listCourses();
     expect(c.every((course) => course.state === "not-started")).toBe(true);
+  });
+
+  it("refreshes course A's activity on every successful turn so Continue follows the most recent course", async () => {
+    // Issue #17 reproduction: A activity, B activity, then another valid A
+    // turn in an unfinished lesson. Continue must point at A after the
+    // final turn — pickRecentActiveCourse and listCourses must agree.
+    const { lessonsA, lessonsB } = await seedTwoCoursesInProgress();
+    const learner = "activity-learner";
+    process.env.CURRENT_LEARNER_ID = learner;
+
+    const lessonA1 = lessonsA[0].id;
+    const lessonB1 = lessonsB[0].id;
+
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "yes" });
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "yes" });
+    const progressA = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    const progressB = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(progressA.completed).toBe(false);
+    expect(progressB.completed).toBe(false);
+
+    const oldA = new Date("2026-01-01T00:00:00.000Z");
+    const newerB = new Date("2026-01-01T00:01:00.000Z");
+    await prisma.progress.update({
+      where: { id: progressA.id },
+      data: { updatedAt: oldA },
+    });
+    await prisma.progress.update({
+      where: { id: progressB.id },
+      data: { updatedAt: newerB },
+    });
+    let courses = await loadCoursesWithLessons(learner);
+    expect(pickRecentActiveCourse(courses, learner)?.slug).toBe("course-b");
+
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "go" });
+    const progressAAfter = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(progressAAfter.completed).toBe(false);
+    expect(progressAAfter.updatedAt.getTime()).toBeGreaterThan(newerB.getTime());
+
+    courses = await loadCoursesWithLessons(learner);
+    expect(pickRecentActiveCourse(courses, learner)?.slug).toBe("course-a");
+    const summaries = await listCourses();
+    const summaryAAfter = summaries.find((c) => c.slug === "course-a")!;
+    const summaryBAfter = summaries.find((c) => c.slug === "course-b")!;
+    expect(summaryAAfter.lastActivityAt! > summaryBAfter.lastActivityAt!).toBe(
+      true,
+    );
+
+    const { getLearnerDashboard } = await import("@/lib/service");
+    const dashboard = await getLearnerDashboard();
+    expect(dashboard.continueCourseId).toBe(
+      courses.find((c) => c.slug === "course-a")!.id,
+    );
+  });
+
+  it("rejected turns do not touch activity (locked lesson, already-complete lesson, bad input)", async () => {
+    const { lessonsA, lessonsB } = await seedTwoCoursesInProgress();
+    const learner = "reject-learner";
+    process.env.CURRENT_LEARNER_ID = learner;
+
+    const lessonA1 = lessonsA[0].id;
+    const lessonA2 = lessonsA[1].id;
+    const lessonB1 = lessonsB[0].id;
+
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "yes" });
+    const aBefore = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    const messageRoute = await import(
+      "@/app/api/lessons/[lessonId]/messages/route"
+    );
+    const context = { params: Promise.resolve({ lessonId: lessonA1 }) };
+    const badInput = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "" }),
+      }),
+      context,
+    );
+    expect(badInput.status).toBe(400);
+    const aAfterBadInput = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(aAfterBadInput.updatedAt.getTime()).toBe(aBefore.updatedAt.getTime());
+
+    await expect(
+      sendTurn({ lessonId: lessonA2, learnerId: learner, content: "yes" }),
+    ).rejects.toThrow();
+    expect(
+      await prisma.progress.findUnique({
+        where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA2 } },
+      }),
+    ).toBeNull();
+
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "yes" });
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "go" });
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "more" });
+    const bBeforeRejectedTurn = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(bBeforeRejectedTurn.completed).toBe(true);
+    await expect(
+      sendTurn({ lessonId: lessonB1, learnerId: learner, content: "go" }),
+    ).rejects.toThrow();
+    const bAfterRejectedTurn = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(bAfterRejectedTurn.updatedAt.getTime()).toBe(
+      bBeforeRejectedTurn.updatedAt.getTime(),
+    );
   });
 });
 

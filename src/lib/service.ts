@@ -228,7 +228,10 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
 
     // Mark progress. If the engine says the lesson is complete and the
     // terminal reply is the one we just produced, mark complete. Otherwise
-    // ensure a progress row exists (touch it).
+    // ensure a progress row exists (create one on first turn) and refresh
+    // `updatedAt` on every successful turn in an unfinished lesson so the
+    // dashboard's Continue card points at the course the learner touched
+    // most recently — not just the one they first started.
     if (reply.isComplete) {
       if (existingProgress) {
         await tx.progress.update({
@@ -240,7 +243,12 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
           data: { learnerId, lessonId, completed: true },
         });
       }
-    } else if (!existingProgress) {
+    } else if (existingProgress) {
+      await tx.progress.update({
+        where: { id: existingProgress.id },
+        data: { updatedAt: new Date() },
+      });
+    } else {
       await tx.progress.create({
         data: { learnerId, lessonId, completed: false },
       });

@@ -616,6 +616,90 @@ test.describe("Learner dashboard — multi-course", () => {
 
     await fresh.close();
   });
+
+  test("Continue follows the most recently touched course across A→B→A turns", async ({
+    page,
+  }) => {
+    // Issue #17 reproduction through the real UI: course A → course B →
+    // back to course A. Continue must point at A after the final turn,
+    // proving that activity tracking is refreshed on every successful
+    // learner turn in an unfinished lesson (not just the first one).
+    await page.goto("/");
+    await page.getByTestId("start-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/);
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // 1. Course A — one valid turn on lesson 1 (the lesson stays in-progress
+    // because the script has more steps after the matching reply).
+    await page.getByTestId("chat-input").fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+
+    // 2. Go home — Continue card points at A.
+    await page.goto("/");
+    await expect(page.getByTestId("continue-card")).toBeVisible();
+    await expect(page.getByTestId("continue-card")).toContainText(
+      "Intro to Large Language Models",
+    );
+
+    // 3. Start course B — one valid turn.
+    await page.getByTestId("start-course-prompting-patterns").click();
+    await expect(page).toHaveURL(/\/lessons\/role-and-audience$/);
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("chat-input").fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+
+    // 4. Go home — Continue card must now point at B.
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+    await page.goto("/");
+    await expect(page.getByTestId("continue-card")).toContainText(
+      "Prompting patterns for engineers",
+    );
+
+    // 5. Return to course A's in-progress lesson and send another valid
+    // turn. This is the turn the bug used to ignore for activity tracking:
+    // the progress row already exists, is not complete, and the buggy
+    // code did not touch updatedAt.
+    await page.getByTestId("continue-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await page.getByTestId("chat-input").fill("I've heard about them on podcasts.");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+
+    // 6. Go home — Continue card must now point at A again.
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(3, { timeout: 10_000 });
+    await page.goto("/");
+    await expect(page.getByTestId("continue-card")).toContainText(
+      "Intro to Large Language Models",
+    );
+  });
 });
 
 test.describe("Learner can recover from an incorrect chat answer", () => {
