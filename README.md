@@ -95,6 +95,15 @@ More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Auth, user accounts, admin/course-author UI, real LLM integration, streaming, multimodal input, notifications, email, analytics, billing, mobile apps, i18n. These are tracked as future work.
 
+## Data ownership boundary (single-learner slice)
+
+This slice is intentionally single-learner, so the learner boundary is narrower than it looks:
+
+- `CURRENT_LEARNER_ID` (default `demo-learner`) scopes **Progress only**.
+- Chat transcripts (`Message`) are **lesson-global**: every message has only `lessonId`, `role`, `content`, `createdAt`. The seed, read, and replay queries in `src/lib/service.ts` all key messages by `lessonId` — there is no `learnerId` on `Message` to filter by.
+
+Multi-user accounts must **not** be added until `Message` gains learner ownership and every transcript query is scoped by learner. Adding accounts before that would let one learner read another learner's chat history on any shared lesson.
+
 ## Dashboard, at a glance
 
 The home page (`src/app/page.tsx`) renders two regions:

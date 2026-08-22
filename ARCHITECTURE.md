@@ -206,6 +206,6 @@ tests/
 
 ## Out of scope
 
-- Auth — `CURRENT_LEARNER_ID` env var stands in for a real session.
+- Auth — `CURRENT_LEARNER_ID` env var stands in for a real session, and it scopes `Progress` only. `Message` rows are **lesson-global** in this slice: the model has no `learnerId`, and every transcript query (seed, read in `getLessonWithMessages`, replay in `sendTurn`) keys by `lessonId`. Multi-user accounts must not be added until `Message` gains learner ownership and every transcript query is scoped by learner — otherwise one learner could read another's chat history on any shared lesson.
 - Multi-tenant, admin UI, course authoring, payments, analytics, notifications.
 - Streaming or real LLM. `selectTutorReply` is the seam.

@@ -51,8 +51,10 @@ npm run dev
 inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`,
 so no `.env` file is required. **The seed is non-destructive:** re-running
 it on an existing database upserts courses and lessons without touching
-learner-owned `Message` or `Progress` rows, so a normal dev restart keeps
-chat history and progress intact. The only destructive reset path is
+any `Message` rows or learner-owned `Progress` rows, so a normal dev
+restart keeps chat history and progress intact. (`Message` is
+lesson-global in this single-learner slice — see README §"Data ownership
+boundary".) The only destructive reset path is
 `npm run db:reset`, which removes `prisma/dev.db` before re-pushing and
 re-seeding.
 
