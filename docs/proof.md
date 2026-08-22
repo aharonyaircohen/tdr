@@ -19,7 +19,7 @@ This document captures the proof artifacts for the TDR learner journey on
   ("Prompting patterns for engineers") exercises the isolation invariants.
 
 All transcripts and screenshots below were captured against the real running
-app against commits on this branch (the polish branch for issue #3).
+app on the branch for the change described by each section.
 
 ## 1. One-command fresh setup
 
@@ -152,6 +152,9 @@ stays compact at the bottom.
 ![Lesson on a mobile viewport — composer + scrollable transcript](screenshots/12-lesson-mobile.png)
 
 ## 4a. Multi-course learner dashboard (issue #5)
+
+Substantive-change CI: [run 32584922139](https://github.com/aharonyaircohen/tdr/actions/runs/32584922139)
+passed repository verification and all six Playwright journeys.
 
 The home page is now a dashboard with two regions:
 
