@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseScript, selectTutorReply, ConversationTurn } from "@/lib/script";
 import { getCurrentLearnerId } from "@/lib/learner";
+import {
+  requireEnterableLesson,
+  LockedLessonError,
+  NotFoundError,
+} from "@/lib/service";
 
 /**
  * Seed the first tutor turn of a lesson if no messages exist yet.
@@ -12,6 +17,18 @@ export async function POST(
   { params }: { params: Promise<{ lessonId: string }> },
 ) {
   const { lessonId } = await params;
+  const learnerId = getCurrentLearnerId();
+  try {
+    await requireEnterableLesson(lessonId, learnerId);
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof LockedLessonError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
     include: { messages: { orderBy: { createdAt: "asc" } } },
@@ -43,13 +60,13 @@ export async function POST(
   await prisma.progress.upsert({
     where: {
       learnerId_lessonId: {
-        learnerId: getCurrentLearnerId(),
+        learnerId,
         lessonId: lesson.id,
       },
     },
     update: {},
     create: {
-      learnerId: getCurrentLearnerId(),
+      learnerId,
       lessonId: lesson.id,
       completed: false,
     },

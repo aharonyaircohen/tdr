@@ -291,6 +291,160 @@ test.describe("Learner journey — full vertical slice", () => {
   });
 });
 
+test.describe("Sequential lesson path is enforced", () => {
+  test.beforeEach(async () => {
+    const ctx = await request.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    });
+    const res = await ctx.post("/api/dev/reset");
+    if (!res.ok()) {
+      throw new Error(`reset failed: ${res.status()} ${await res.text()}`);
+    }
+    await ctx.dispose();
+  });
+
+  test("course overview locks future lessons and unlocks after completion", async ({
+    page,
+  }) => {
+    // 1. From a brand-new course, lessons 2 and 3 are rendered as locked —
+    // not links, with the explanation text — and the only enterable link is
+    // lesson 1.
+    await page.goto("/courses/intro-to-llms");
+    await expect(page.getByTestId("lesson-what-is-llm")).toBeVisible();
+    // Lesson 1 is enterable.
+    await expect(
+      page.getByTestId("lesson-link-what-is-llm"),
+    ).toContainText("Start");
+    // Lessons 2 and 3 are locked: their badge says "Locked", the link is
+    // absent, and the explanation text is present.
+    await expect(page.getByTestId("lesson-badge-tokens-and-context")).toHaveText(
+      "Locked",
+    );
+    await expect(
+      page.getByTestId("lesson-locked-note-tokens-and-context"),
+    ).toContainText("Complete the previous lesson");
+    await expect(
+      page.getByTestId("lesson-link-tokens-and-context"),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("lesson-badge-prompts-are-programs")).toHaveText(
+      "Locked",
+    );
+    await expect(
+      page.getByTestId("lesson-link-prompts-are-programs"),
+    ).toHaveCount(0);
+
+    // 2. Direct URL to a locked future lesson must redirect to the resume
+    // lesson (lesson 1) — the gate happens server-side.
+    await page.goto("/courses/intro-to-llms/lessons/tokens-and-context");
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // 3. The Next lesson link is hidden until the current lesson is
+    // complete.
+    await expect(page.getByTestId("next-lesson")).toHaveCount(0);
+
+    // 4. Drive lesson 1 to completion by clicking Mark complete — the
+    // Next button becomes available immediately after completion.
+    await page.getByTestId("mark-complete").click();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("next-lesson")).toBeVisible();
+
+    // 5. The course overview now reflects the unlocked state for lesson 2
+    // (and lesson 3 is still locked).
+    await page.goto("/courses/intro-to-llms");
+    await expect(
+      page.getByTestId("lesson-badge-what-is-llm"),
+    ).toHaveText("Done");
+    await expect(
+      page.getByTestId("lesson-link-what-is-llm"),
+    ).toContainText("Review");
+    // Lesson 2 is now Current (resume points here) and is a clickable link.
+    await expect(page.getByTestId("lesson-badge-tokens-and-context")).toHaveText(
+      "Current",
+    );
+    await expect(
+      page.getByTestId("lesson-link-tokens-and-context"),
+    ).toContainText("Continue");
+    // Lesson 3 is still locked.
+    await expect(
+      page.getByTestId("lesson-badge-prompts-are-programs"),
+    ).toHaveText("Locked");
+    await expect(
+      page.getByTestId("lesson-link-prompts-are-programs"),
+    ).toHaveCount(0);
+  });
+
+  test("direct URL to lesson 3 redirects to the current lesson while lesson 2 is in-progress", async ({
+    page,
+  }) => {
+    // Drive lesson 1 to completion by sending the scripted turns so we
+    // land on a clean resume into lesson 2.
+    await page.goto("/courses/intro-to-llms/lessons/what-is-llm");
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("chat-input").fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await page.getByTestId("chat-input").fill("I've heard about them on podcasts.");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+    await page.getByTestId("chat-input").fill("done");
+    await page.getByTestId("chat-send").click();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Use the Next button to enter lesson 2 — it should be open.
+    await page.getByTestId("next-lesson").click();
+    await expect(page).toHaveURL(/\/lessons\/tokens-and-context$/, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    // Make one in-progress turn on lesson 2 so its progress is recorded
+    // as not-yet-complete.
+    await page.getByTestId("chat-input").fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+
+    // Try a direct URL to lesson 3 — must redirect to lesson 2 (resume).
+    await page.goto("/courses/intro-to-llms/lessons/prompts-are-programs");
+    await expect(page).toHaveURL(/\/lessons\/tokens-and-context$/, {
+      timeout: 15_000,
+    });
+    // The lesson-2 transcript and its single learner bubble must survive
+    // the redirect — the redirect is a navigation, not a state wipe.
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 15_000 });
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1);
+  });
+});
+
 test.describe("Learner dashboard — multi-course", () => {
   test.beforeEach(async () => {
     const ctx = await request.newContext({

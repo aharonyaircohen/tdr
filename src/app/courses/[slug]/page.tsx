@@ -1,6 +1,10 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { getCourseWithLessons, pickResumeLesson } from "@/lib/service";
+import { notFound } from "next/navigation";
+import {
+  getCourseWithLessons,
+  pickResumeLesson,
+  canEnterLesson,
+} from "@/lib/service";
 import { getCurrentLearnerId } from "@/lib/learner";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +26,9 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
   const completedCount = course.lessons.filter((l) =>
     l.progress.some((p) => p.learnerId === learnerId && p.completed),
   ).length;
+  const hasCourseProgress = course.lessons.some((l) =>
+    l.progress.some((p) => p.learnerId === learnerId),
+  );
 
   return (
     <main className="container">
@@ -58,10 +65,17 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
             const p = lesson.progress.find((row) => row.learnerId === learnerId);
             const isDone = p?.completed === true;
             const isCurrent = resume?.id === lesson.id;
+            // Sequential-path rule: future lessons are locked until all
+            // predecessors are complete. Past completed lessons remain
+            // reviewable; the current resume lesson is always enterable.
+            const isLocked =
+              !isDone &&
+              !canEnterLesson(course.lessons, learnerId, lesson.id);
             const cls = [
               "lesson-item",
               isDone ? "done" : "",
               isCurrent ? "current" : "",
+              isLocked ? "locked" : "",
             ]
               .filter(Boolean)
               .join(" ");
@@ -70,16 +84,33 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
                 <span>
                   {lesson.order}. {lesson.title}
                 </span>
-                <span className="badge">
-                  {isDone ? "Done" : isCurrent ? "Current" : "Up next"}
-                </span>
-                <Link
-                  href={`/courses/${course.slug}/lessons/${lesson.slug}`}
-                  style={{ marginLeft: 12 }}
-                  data-testid={`lesson-link-${lesson.slug}`}
+                <span
+                  className={`badge ${isLocked ? "badge-locked" : ""}`}
+                  data-testid={`lesson-badge-${lesson.slug}`}
                 >
-                  {isDone ? "Review" : isCurrent ? "Continue" : "Start"} →
-                </Link>
+                  {isDone ? "Done" : isCurrent ? "Current" : isLocked ? "Locked" : "Up next"}
+                </span>
+                {isLocked ? (
+                  <span
+                    className="muted"
+                    style={{ marginLeft: 12, fontSize: 13 }}
+                    data-testid={`lesson-locked-note-${lesson.slug}`}
+                  >
+                    Complete the previous lesson to unlock
+                  </span>
+                ) : (
+                  <Link
+                    href={`/courses/${course.slug}/lessons/${lesson.slug}`}
+                    style={{ marginLeft: 12 }}
+                    data-testid={`lesson-link-${lesson.slug}`}
+                  >
+                    {isDone
+                      ? "Review"
+                      : isCurrent && hasCourseProgress
+                        ? "Continue"
+                        : "Start"} →
+                  </Link>
+                )}
               </li>
             );
           })}

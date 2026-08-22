@@ -8,6 +8,7 @@ A chat-based learning management system. This repository is the **vertical slice
 2. See the home dashboard with a **Continue learning** card (only when progress exists) and an **All courses** catalog.
 3. Pick one of the seeded courses ("Intro to Large Language Models" or "Prompting patterns for engineers").
 4. Chat with the tutor through the lesson script. Each tutor message advances the lesson; the lesson is marked complete when the script finishes. If you type something off-script the tutor replies with concise retry feedback that names what it is currently asking for, and your next matching reply advances the lesson normally — nothing you typed is lost.
+5. Courses are walked **sequentially**: a future lesson is locked until every earlier lesson is complete. The course overview renders locked lessons with an explanation instead of a link, a direct URL to a locked future lesson redirects to your current lesson in that course, and the in-lesson **Next lesson →** action only appears once the current lesson is complete (past completed lessons remain reviewable).
 5. Start a second course — its progress stays isolated on its own card.
 6. Return home and the Continue card jumps to whichever unfinished course was touched most recently (a course that is fully complete never replaces a still-active one).
 7. Close the browser. Reopen the app. You land back on the most-recent unfinished lesson, with all prior chat history restored for every course.

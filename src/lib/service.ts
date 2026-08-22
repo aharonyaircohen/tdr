@@ -122,6 +122,37 @@ export type SendTurnResult = {
 };
 
 /**
+ * Enforce the course's sequential path at the shared mutation boundary.
+ * Page links and redirects explain the policy, but API callers must not be
+ * able to start or complete a locked lesson by bypassing the UI.
+ */
+export async function requireEnterableLesson(
+  lessonId: string,
+  learnerId: string,
+) {
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    include: {
+      course: {
+        include: {
+          lessons: {
+            orderBy: { order: "asc" },
+            include: { progress: { where: { learnerId } } },
+          },
+        },
+      },
+    },
+  });
+  if (!lesson) throw new NotFoundError(`Lesson ${lessonId} not found`);
+  if (!canEnterLesson(lesson.course.lessons, learnerId, lessonId)) {
+    throw new LockedLessonError(
+      "Complete the previous lesson before starting this lesson",
+    );
+  }
+  return lesson;
+}
+
+/**
  * Append a learner turn, compute the next tutor turn using the rule-based
  * engine, persist the tutor turn, and update progress. Returns the new
  * messages and whether the lesson is now complete.
@@ -129,8 +160,7 @@ export type SendTurnResult = {
 export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
   const { lessonId, learnerId, content } = input;
 
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-  if (!lesson) throw new NotFoundError(`Lesson ${lessonId} not found`);
+  const lesson = await requireEnterableLesson(lessonId, learnerId);
 
   return prisma.$transaction(async (tx) => {
     // Fetch existing messages for the engine.
@@ -244,8 +274,7 @@ export async function markLessonComplete(
   lessonId: string,
   learnerId: string,
 ): Promise<void> {
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-  if (!lesson) throw new NotFoundError(`Lesson ${lessonId} not found`);
+  await requireEnterableLesson(lessonId, learnerId);
   await prisma.progress.upsert({
     where: { learnerId_lessonId: { learnerId, lessonId } },
     update: { completed: true },
@@ -258,6 +287,9 @@ export class NotFoundError extends Error {
 }
 export class BadInputError extends Error {
   readonly status = 400;
+}
+export class LockedLessonError extends Error {
+  readonly status = 409;
 }
 
 // Re-export for callers.

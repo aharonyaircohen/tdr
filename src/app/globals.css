@@ -156,8 +156,10 @@ header.page-header h1 {
 }
 .lesson-item.done { background: #e8f1ec; border-color: #b9d6c5; }
 .lesson-item.current { border-color: var(--accent); border-width: 2px; padding: 7px 11px; }
+.lesson-item.locked { opacity: 0.78; }
 .lesson-item .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #e1ead1; color: #2f5b2f; }
 .lesson-item.done .badge { background: #c8e0c8; color: #1f4a2a; }
+.lesson-item .badge.badge-locked { background: #eef0ec; color: var(--muted); }
 
 .progress-bar {
   height: 8px;

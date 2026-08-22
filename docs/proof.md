@@ -23,6 +23,15 @@ This document captures the proof artifacts for the TDR learner journey on
   transcript, the engine surfaces concise retry feedback that names the
   scripted learner prompt, and refreshing the page preserves the ability
   to retry. Existing correct journeys are unchanged.
+- **Issue #11 / this PR** — Enforce the existing sequential lesson path:
+  `canEnterLesson` is now the single policy owner for forward navigation.
+  The course overview renders future lessons as `Locked` (no link, brief
+  explanation) instead of `Up next`, a direct URL to a locked future
+  lesson `redirect()`s to the resume lesson in the same course, and the
+  in-lesson **Next lesson →** action only appears once the current
+  lesson is complete. The seed, message, and completion APIs enforce the
+  same rule and return `409` for locked mutations. Past completed lessons
+  remain reviewable.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.

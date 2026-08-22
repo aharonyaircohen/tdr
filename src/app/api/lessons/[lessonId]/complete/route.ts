@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { markLessonComplete, NotFoundError } from "@/lib/service";
+import {
+  markLessonComplete,
+  NotFoundError,
+  LockedLessonError,
+} from "@/lib/service";
 import { getCurrentLearnerId } from "@/lib/learner";
 
 export async function POST(
@@ -13,6 +17,9 @@ export async function POST(
   } catch (e) {
     if (e instanceof NotFoundError) {
       return NextResponse.json({ error: e.message }, { status: 404 });
+    }
+    if (e instanceof LockedLessonError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });
