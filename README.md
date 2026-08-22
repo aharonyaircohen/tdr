@@ -38,13 +38,15 @@ npm ci        # install (uses package-lock.json)
 npm run dev   # creates prisma/dev.db, seeds one course + 3 lessons, starts Next on :3000
 ```
 
-`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. The npm scripts inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`, so no `.env` file is required; override either by exporting the env vars in your shell before running `npm run dev`.
+`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. **The seed is non-destructive: re-running `npm run setup` (or restarting `npm run dev`) preserves every `Message` and `Progress` row, so chat history and learner progress survive normal restarts.** The npm scripts inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`, so no `.env` file is required; override either by exporting the env vars in your shell before running `npm run dev`.
 
-### Reset the database
+### Reset the database (destructive)
 
 ```bash
-npm run db:reset
+npm run db:reset   # deletes prisma/dev.db and re-creates a clean database
 ```
+
+`npm run db:reset` is the **only** command that erases learner state. It removes `prisma/dev.db` before re-pushing the schema and re-seeding, so chat history and progress are wiped. Use it when you want a clean slate. For Playwright / browser resets during local development, the dev-only endpoint `POST /api/dev/reset` is also destructive but only when the server is started with `ALLOW_DEV_RESET=true`.
 
 ## Run the tests
 

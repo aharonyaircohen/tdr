@@ -8,15 +8,15 @@ This document captures the proof artifacts for the TDR learner journey on
 - **Issue #3 / PR #4** — Learner UI polish: removed the stray bullet before
   the course card on the catalog, and replaced the oversized lesson textarea +
   send button with a compact chat composer that grows naturally with content.
-- **Issue #5 / this PR** — Learner dashboard: extend the existing learner
+- **Issue #5 / PR #6** — Learner dashboard: extend the existing learner
   journey so a learner can see more than one course, see independent progress
   on each, and continue the right unfinished course after switching away.
-  **This PR is an extension of the existing working journey — NOT a new
-  application foundation.** No new stack, router, persistence, auth, or LLM
-  was introduced; the four-table data model, chat engine, and APIs are
-  preserved. The home page gains a Continue learning card and the catalog
-  gains per-course state. A second seeded course
-  ("Prompting patterns for engineers") exercises the isolation invariants.
+- **Issue #7 / this PR** — Persistence across normal app restarts:
+  the seed script no longer wipes `Message` and `Progress` rows, so a
+  normal `npm run dev` start preserves learner chat history and progress.
+  `npm run db:reset` remains the only destructive reset path; Playwright
+  uses the dev-only `POST /api/dev/reset` endpoint (gated on
+  `ALLOW_DEV_RESET=true`) for an isolated, clean state during e2e runs.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.
@@ -34,7 +34,12 @@ npm run dev
 `npm run dev` runs `npm run setup` via the `predev` hook, which does
 `prisma generate && prisma db push && tsx prisma/seed.ts`. The npm scripts
 inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`,
-so no `.env` file is required.
+so no `.env` file is required. **The seed is non-destructive:** re-running
+it on an existing database upserts courses and lessons without touching
+learner-owned `Message` or `Progress` rows, so a normal dev restart keeps
+chat history and progress intact. The only destructive reset path is
+`npm run db:reset`, which removes `prisma/dev.db` before re-pushing and
+re-seeding.
 
 A real `npm install` against the committed lockfile completes in ~25s and
 produces **0 vulnerabilities** (`npm audit` reports `found 0 vulnerabilities`)

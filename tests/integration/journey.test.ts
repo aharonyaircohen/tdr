@@ -405,3 +405,111 @@ describe("multi-course dashboard helpers", () => {
     expect(c.every((course) => course.state === "not-started")).toBe(true);
   });
 });
+
+describe("seed script preserves learner state across a normal re-run", () => {
+  // Invokes the real `prisma/seed.ts` against the test database. This is
+  // exactly the script `npm run setup` runs on every `npm run dev` start,
+  // so proving it preserves `Message` and `Progress` rows proves the
+  // restart-persistence promise.
+  function runRealSeed() {
+    try {
+      execSync("npx tsx prisma/seed.ts", {
+        stdio: "pipe",
+        env: { ...process.env, DATABASE_URL: "file:./test.db" },
+      });
+    } catch (e) {
+      const err = e as { stdout?: Buffer; stderr?: Buffer; status?: number };
+      const out = (err.stdout?.toString() ?? "") + (err.stderr?.toString() ?? "");
+      throw new Error(
+        `prisma seed failed (exit ${err.status ?? "?"}):\n${out}`,
+      );
+    }
+  }
+
+  it("keeps learner Message and Progress rows when the seed is re-run", async () => {
+    runRealSeed();
+
+    const lessonA = await prisma.lesson.findFirstOrThrow({
+      where: { slug: "what-is-llm" },
+    });
+    const lessonB = await prisma.lesson.findFirstOrThrow({
+      where: { slug: "role-and-audience" },
+    });
+
+    // Drive real learner turns on two different lessons so we own progress
+    // rows and chat history for both seeded courses.
+    await sendTurn({
+      lessonId: lessonA.id,
+      learnerId: "test-learner",
+      content: "next",
+    });
+    await sendTurn({
+      lessonId: lessonA.id,
+      learnerId: "test-learner",
+      content: "I have heard about them.",
+    });
+    await sendTurn({
+      lessonId: lessonB.id,
+      learnerId: "test-learner",
+      content: "next",
+    });
+
+    const messagesBefore = await prisma.message.count();
+    const progressBefore = await prisma.progress.count();
+    expect(messagesBefore).toBeGreaterThan(0);
+    expect(progressBefore).toBeGreaterThan(0);
+
+    const tutorSample = await prisma.message.findFirstOrThrow({
+      where: { lessonId: lessonA.id, role: "tutor" },
+    });
+    const learnerSample = await prisma.message.findFirstOrThrow({
+      where: { lessonId: lessonA.id, role: "learner" },
+    });
+
+    // Re-run the real seed — this is what `npm run setup` does on every
+    // `npm run dev` start, against a DB that already has learner state.
+    runRealSeed();
+
+    // Learner rows must survive.
+    expect(await prisma.message.count()).toBe(messagesBefore);
+    expect(await prisma.progress.count()).toBe(progressBefore);
+
+    const tutorAfter = await prisma.message.findFirstOrThrow({
+      where: { lessonId: lessonA.id, role: "tutor" },
+    });
+    const learnerAfter = await prisma.message.findFirstOrThrow({
+      where: { lessonId: lessonA.id, role: "learner" },
+    });
+    expect(tutorAfter.id).toBe(tutorSample.id);
+    expect(tutorAfter.content).toBe(tutorSample.content);
+    expect(learnerAfter.id).toBe(learnerSample.id);
+    expect(learnerAfter.content).toBe(learnerSample.content);
+
+    // Progress for both lessons still belongs to this learner.
+    const progressA = await prisma.progress.findUniqueOrThrow({
+      where: {
+        learnerId_lessonId: { learnerId: "test-learner", lessonId: lessonA.id },
+      },
+    });
+    const progressB = await prisma.progress.findUniqueOrThrow({
+      where: {
+        learnerId_lessonId: { learnerId: "test-learner", lessonId: lessonB.id },
+      },
+    });
+    expect(progressA.completed).toBe(false);
+    expect(progressB.completed).toBe(false);
+  });
+
+  it("is idempotent on seeded courses and lessons across a re-run", async () => {
+    runRealSeed();
+    const coursesBefore = await prisma.course.count();
+    const lessonsBefore = await prisma.lesson.count();
+    expect(coursesBefore).toBe(2);
+    expect(lessonsBefore).toBe(6);
+
+    runRealSeed();
+
+    expect(await prisma.course.count()).toBe(coursesBefore);
+    expect(await prisma.lesson.count()).toBe(lessonsBefore);
+  });
+});
