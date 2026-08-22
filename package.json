@@ -1,0 +1,39 @@
+{
+  "name": "tdr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push --skip-generate",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "rm -f prisma/dev.db && npm run db:push && npm run db:seed",
+    "postinstall": "prisma generate",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "verify": "npm run typecheck && npm run lint && npm run test:unit"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "next": "14.2.18",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2",
+    "@types/node": "20.16.10",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.18",
+    "prisma": "5.22.0",
+    "tsx": "4.19.1",
+    "typescript": "5.6.3",
+    "vitest": "2.1.3"
+  }
+}

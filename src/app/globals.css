@@ -1,0 +1,206 @@
+:root {
+  --bg: #f7f8f6;
+  --fg: #1a1f1a;
+  --muted: #5b6a5b;
+  --accent: #2f6f4f;
+  --accent-fg: #ffffff;
+  --tutor-bg: #ffffff;
+  --learner-bg: #e8f1ec;
+  --border: #d8e0d8;
+  --error-bg: #fde8e8;
+  --error-fg: #7a1f1f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+header.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+header.page-header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.muted { color: var(--muted); font-size: 14px; }
+
+.course-list { display: grid; gap: 16px; }
+.course-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  transition: transform 0.05s ease, border-color 0.1s ease;
+}
+.course-card:hover { border-color: var(--accent); }
+.course-card h2 { margin: 0 0 4px; font-size: 18px; }
+.course-card p { margin: 0 0 12px; color: var(--muted); }
+
+.lesson-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.lesson-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fafbfa;
+  border: 1px solid var(--border);
+}
+.lesson-item.done { background: #e8f1ec; border-color: #b9d6c5; }
+.lesson-item.current { border-color: var(--accent); border-width: 2px; padding: 7px 11px; }
+.lesson-item .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #e1ead1; color: #2f5b2f; }
+.lesson-item.done .badge { background: #c8e0c8; color: #1f4a2a; }
+
+.progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.progress-bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.chat-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
+  min-height: 70vh;
+}
+
+.chat-transcript {
+  background: var(--tutor-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.bubble.tutor {
+  align-self: flex-start;
+  background: var(--tutor-bg);
+  border: 1px solid var(--border);
+}
+.bubble.learner {
+  align-self: flex-end;
+  background: var(--learner-bg);
+}
+.bubble.terminal {
+  background: #dff0e0;
+  border: 1px solid #98c19e;
+  color: #1a3d20;
+}
+
+.chat-form {
+  display: flex;
+  gap: 8px;
+}
+.chat-form textarea {
+  flex: 1;
+  min-height: 56px;
+  padding: 10px 12px;
+  font-size: 15px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  resize: vertical;
+  font-family: inherit;
+}
+.chat-form button {
+  padding: 0 18px;
+  font-size: 15px;
+  border-radius: 10px;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+.chat-form button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.actions-row .ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 6px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.notice {
+  background: var(--error-bg);
+  color: var(--error-fg);
+  border: 1px solid #f4c7c7;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.notice.success {
+  background: #e8f1ec;
+  color: #1f4a2a;
+  border-color: #b9d6c5;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

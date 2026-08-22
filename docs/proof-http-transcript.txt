@@ -1,0 +1,54 @@
+## HTTP transcript (captured 2026-08-22 against the running dev server)
+
+Lesson: "What is an LLM?" (`what-is-llm`) — `lessonId` resolved from
+`GET /courses/intro-to-llms/lessons/what-is-llm`.
+
+### 1. Seed the first tutor turn
+
+    POST /api/lessons/{lessonId}/seed
+    → 200 OK
+    {
+      "message": {
+        "id": "cmt4ghpvw000147u4ez2i7n5f",
+        "lessonId": "cmt4gdigu0002hi2cgn2vmfo0",
+        "role": "tutor",
+        "content": "Welcome! In this lesson we will explore what a large language model actually is. Think of it as a very advanced text predictor — given some text, it predicts what comes next. Reply with 'next' when you are ready to continue.",
+        "createdAt": "2026-08-22T14:11:03.117Z"
+      }
+    }
+
+### 2. Turn 1 — learner says "next"
+
+    POST /api/lessons/{lessonId}/messages
+    {"content": "next"}
+    → 200 OK
+    {
+      "learnerMessage": { "id": "cmt4ghpwf000647u4xfdtbjw6", "role": "learner", "content": "next", "createdAt": "2026-08-22T14:11:03.135Z" },
+      "tutorMessage":   { "id": "cmt4ghpwg000847u48zudgrua", "role": "tutor", "content": "Great. An LLM is trained on huge amounts of text from the internet, books, and code. It learns patterns — grammar, facts, reasoning styles — by predicting the next word in millions of sentences. Tell me one thing you already knew about LLMs, in any words you like.", "createdAt": "2026-08-22T14:11:03.136Z" },
+      "isComplete": false
+    }
+
+### 3. Turn 2 — learner shares something
+
+    POST /api/lessons/{lessonId}/messages
+    {"content": "I have heard about LLMs on podcasts."}
+    → 200 OK
+    {
+      "learnerMessage": { "id": "cmt4ghpws000b47u4h4bmrhfj", "role": "learner", "content": "I have heard about LLMs on podcasts.", "createdAt": "2026-08-22T14:11:03.148Z" },
+      "tutorMessage":   { "id": "cmt4ghpwt000d47u4oxh4eamb", "role": "tutor", "content": "Nice — that is a solid intuition. LLMs do not 'think' the way humans do; they are extremely good pattern matchers. Type 'done' to mark this lesson complete and move to the next one.", "createdAt": "2026-08-22T14:11:03.149Z" },
+      "isComplete": false
+    }
+
+### 4. Turn 3 — learner completes the lesson
+
+    POST /api/lessons/{lessonId}/messages
+    {"content": "done"}
+    → 200 OK
+    {
+      "learnerMessage": { "id": "cmt4ghpx5000g47u4av5s9t69", "role": "learner", "content": "done", "createdAt": "2026-08-22T14:11:03.161Z" },
+      "tutorMessage":   { "id": "terminal-1787407863162", "role": "tutor", "content": "Lesson complete. Move on to the next lesson when you're ready.", "createdAt": "2026-08-22T14:11:03.162Z" },
+      "isComplete": true
+    }
+
+At this point a Progress row exists with `(learnerId, lessonId, completed=true)`,
+which is exactly the state the resume flow reads on the next visit.
