@@ -344,8 +344,10 @@ async function main() {
   }
 
   // Note: this seed is intentionally non-destructive. Re-running it on an
-  // existing database must preserve learner-owned `Message` and `Progress`
-  // rows so a normal `npm run dev` restart does not lose learner state.
+  // existing database must preserve any `Message` rows and learner-owned
+  // `Progress` rows so a normal `npm run dev` restart does not lose
+  // learner state. Note: `Message` is lesson-global in this single-learner
+  // slice (no `learnerId`); "learner-owned" applies to `Progress` only.
   // The intentional destructive path is `npm run db:reset`, which deletes
   // the SQLite file before re-pushing the schema and re-seeding.
 
