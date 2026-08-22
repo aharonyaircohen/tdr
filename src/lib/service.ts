@@ -156,6 +156,11 @@ export async function requireEnterableLesson(
  * Append a learner turn, compute the next tutor turn using the rule-based
  * engine, persist the tutor turn, and update progress. Returns the new
  * messages and whether the lesson is now complete.
+ *
+ * Once the learner's progress row on this lesson is `completed = true`,
+ * further learner turns are rejected with `LessonCompleteError` — the
+ * transcript is immutable past completion so a refresh always shows the
+ * same full conversation.
  */
 export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
   const { lessonId, learnerId, content } = input;
@@ -163,6 +168,18 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
   const lesson = await requireEnterableLesson(lessonId, learnerId);
 
   return prisma.$transaction(async (tx) => {
+    // Reject further turns once this learner's progress is complete. The
+    // check happens before any insert so a rejected turn does not mutate
+    // the transcript (count-stable after completion).
+    const existingProgress = await tx.progress.findUnique({
+      where: { learnerId_lessonId: { learnerId, lessonId } },
+    });
+    if (existingProgress?.completed) {
+      throw new LessonCompleteError(
+        "This lesson is already complete",
+      );
+    }
+
     // Fetch existing messages for the engine.
     const existing = await tx.message.findMany({
       where: { lessonId },
@@ -202,39 +219,20 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
     const script = parseScript(lesson.script);
     const reply = selectTutorReply(script, convo);
 
-    // The engine may emit a "lesson complete" terminal tutor line. Persist it
-    // only if it's a real content line (not the terminal placeholder).
-    let tutorRecord: { id: string; content: string; createdAt: Date; role: "tutor" };
-    if (reply.isComplete) {
-      // Use the terminal content only if there isn't already a terminal line.
-      tutorRecord = {
-        id: `terminal-${Date.now()}`,
-        content: reply.content,
-        role: "tutor",
-        createdAt: new Date(),
-      };
-    } else {
-      const created = await tx.message.create({
-        data: { lessonId, role: "tutor", content: reply.content },
-      });
-      tutorRecord = {
-        id: created.id,
-        content: created.content,
-        role: "tutor",
-        createdAt: created.createdAt,
-      };
-    }
+    // Persist every tutor reply — including the closing line emitted when
+    // `isComplete` is true. Persisting the final tutor row keeps the
+    // transcript stable across refresh and direct API loads.
+    const createdTutor = await tx.message.create({
+      data: { lessonId, role: "tutor", content: reply.content },
+    });
 
     // Mark progress. If the engine says the lesson is complete and the
     // terminal reply is the one we just produced, mark complete. Otherwise
     // ensure a progress row exists (touch it).
-    const progressRow = await tx.progress.findUnique({
-      where: { learnerId_lessonId: { learnerId, lessonId } },
-    });
     if (reply.isComplete) {
-      if (progressRow) {
+      if (existingProgress) {
         await tx.progress.update({
-          where: { id: progressRow.id },
+          where: { id: existingProgress.id },
           data: { completed: true },
         });
       } else {
@@ -242,7 +240,7 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
           data: { learnerId, lessonId, completed: true },
         });
       }
-    } else if (!progressRow) {
+    } else if (!existingProgress) {
       await tx.progress.create({
         data: { learnerId, lessonId, completed: false },
       });
@@ -250,10 +248,10 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
 
     return {
       tutorMessage: {
-        id: tutorRecord.id,
+        id: createdTutor.id,
         role: "tutor" as const,
-        content: tutorRecord.content,
-        createdAt: tutorRecord.createdAt.toISOString(),
+        content: createdTutor.content,
+        createdAt: createdTutor.createdAt.toISOString(),
       },
       learnerMessage: {
         id: learnerMessage.id,
@@ -289,6 +287,9 @@ export class BadInputError extends Error {
   readonly status = 400;
 }
 export class LockedLessonError extends Error {
+  readonly status = 409;
+}
+export class LessonCompleteError extends Error {
   readonly status = 409;
 }
 

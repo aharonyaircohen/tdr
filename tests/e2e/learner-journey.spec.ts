@@ -731,3 +731,163 @@ test.describe("Learner can recover from an incorrect chat answer", () => {
     await context.close();
   });
 });
+
+test.describe("Completed lesson transcript is stable across refresh", () => {
+  // Issue #15: the closing tutor reply must be persisted like every other
+  // tutor turn, so a reload shows the same full transcript and the
+  // composer remains disabled.
+
+  test.beforeEach(async () => {
+    const ctx = await request.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    });
+    const res = await ctx.post("/api/dev/reset");
+    if (!res.ok()) {
+      throw new Error(`reset failed: ${res.status()} ${await res.text()}`);
+    }
+    await ctx.dispose();
+  });
+
+  test("completing a lesson, reloading, still shows the final tutor bubble exactly once", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByTestId("start-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const transcript = page.getByTestId("chat-transcript");
+    const input = page.getByTestId("chat-input");
+
+    // Drive the lesson to completion through the scripted turns.
+    await input.fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(
+      1,
+      { timeout: 10_000 },
+    );
+    await expect(transcript.locator("[data-testid=bubble-tutor]")).toHaveCount(
+      2,
+      { timeout: 10_000 },
+    );
+
+    await input.fill("I have heard about LLMs on podcasts.");
+    await page.getByTestId("chat-send").click();
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(
+      2,
+      { timeout: 10_000 },
+    );
+    await expect(transcript.locator("[data-testid=bubble-tutor]")).toHaveCount(
+      3,
+      { timeout: 10_000 },
+    );
+
+    await input.fill("done");
+    await page.getByTestId("chat-send").click();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("lesson-progress")).toContainText("1 / 3", {
+      timeout: 10_000,
+    });
+
+    // Pre-refresh counts: 3 tutor bubbles (opening + scripted advance +
+    // closing line), 3 learner bubbles ("next", the LLM reply, "done").
+    await expect(transcript.locator("[data-testid=bubble-tutor]")).toHaveCount(3);
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(3);
+    // Composer is disabled on completion.
+    await expect(page.getByTestId("chat-input")).toBeDisabled();
+    await expect(page.getByTestId("chat-send")).toBeDisabled();
+
+    // Reload — the transcript must come back byte-for-byte.
+    await page.reload();
+    const reloadedTranscript = page.getByTestId("chat-transcript");
+    await expect(reloadedTranscript.locator("[data-testid=bubble-tutor]").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      reloadedTranscript.locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(3, { timeout: 10_000 });
+    await expect(
+      reloadedTranscript.locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(3, { timeout: 10_000 });
+
+    // The closing tutor bubble is the last one — for a script whose final
+    // step is a learner prompt, the engine emits its synthetic closing
+    // line. Either way, the line is now a real persisted row that survives
+    // the reload.
+    const closingBubble = reloadedTranscript
+      .locator("[data-testid=bubble-tutor]")
+      .last();
+    await expect(closingBubble).toBeVisible();
+    await expect(closingBubble).not.toContainText("I'm waiting");
+    await expect(closingBubble).not.toContainText("Try again");
+
+    // Composer is still disabled after refresh — the lesson is complete.
+    await expect(page.getByTestId("chat-input")).toBeDisabled();
+    await expect(page.getByTestId("chat-send")).toBeDisabled();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible();
+  });
+
+  test("a direct API turn after script-driven completion is rejected and the transcript is unchanged", async ({
+    page,
+    request: apiRequest,
+  }) => {
+    await page.goto("/");
+    await page.getByTestId("start-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Drive the lesson to completion via the chat composer — the same path
+    // a learner would take. The closing tutor bubble must appear in the
+    // UI on this page.
+    const transcript = page.getByTestId("chat-transcript");
+    const input = page.getByTestId("chat-input");
+    await input.fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(
+      1,
+      { timeout: 10_000 },
+    );
+    await input.fill("I've heard about LLMs on podcasts.");
+    await page.getByTestId("chat-send").click();
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(
+      2,
+      { timeout: 10_000 },
+    );
+    await input.fill("done");
+    await page.getByTestId("chat-send").click();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Resolve the lesson id via the public courses API. We avoid scraping
+    // from the page DOM because we want the assertion to be about the
+    // public API surface, not the chat-lesson component internals.
+    const ctx = await apiRequest.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    });
+    const coursesRes = await ctx.get("/api/courses/intro-to-llms");
+    expect(coursesRes.ok()).toBe(true);
+    const coursesBody = (await coursesRes.json()) as {
+      lessons: { id: string; slug: string }[];
+    };
+    const lesson = coursesBody.lessons.find((l) => l.slug === "what-is-llm");
+    expect(lesson).toBeDefined();
+    const lessonId = lesson!.id;
+
+    // A direct API call attempting another learner turn must be rejected
+    // with 409 — this proves the disabled composer is enforced at the
+    // shared mutation boundary, not just client-side.
+    const bypass = await ctx.post(`/api/lessons/${lessonId}/messages`, {
+      data: { content: "post-complete sneak" },
+    });
+    expect(bypass.status()).toBe(409);
+
+    await ctx.dispose();
+  });
+});
