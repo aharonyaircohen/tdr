@@ -13,7 +13,7 @@ import {
   pickResumeLesson,
   canEnterLesson,
 } from "@/lib/progress";
-import { listCourses, LessonCompleteError } from "@/lib/service";
+import { listCourses } from "@/lib/service";
 import { retryFeedback, parseScript } from "@/lib/script";
 
 const testDbPath = path.resolve(process.cwd(), "prisma/test.db");
@@ -418,45 +418,6 @@ describe("completed lesson transcript stability", () => {
       where: { id: finishing.tutorMessage.id },
     });
     expect(fromDb?.content).toBe("Lesson complete.");
-  });
-
-  it("rejects learner turns after completion and keeps the transcript byte-for-byte stable", async () => {
-    const { lessons } = await seedFixtures();
-    const learner = "test-learner";
-    const lessonId = lessons[0].id;
-
-    await sendTurn({ lessonId, learnerId: learner, content: "yes" });
-    await sendTurn({ lessonId, learnerId: learner, content: "done" });
-
-    const before = await prisma.message.findMany({
-      where: { lessonId },
-      orderBy: { createdAt: "asc" },
-    });
-    expect(before.length).toBe(5);
-
-    // A post-complete turn must be rejected with LessonCompleteError and
-    // must NOT mutate the transcript.
-    await expect(
-      sendTurn({
-        lessonId,
-        learnerId: learner,
-        content: "anything else",
-      }),
-    ).rejects.toBeInstanceOf(LessonCompleteError);
-
-    const after = await prisma.message.findMany({
-      where: { lessonId },
-      orderBy: { createdAt: "asc" },
-    });
-    // Byte-for-byte / count-stable: same rows, same count, same ids.
-    expect(after.length).toBe(before.length);
-    expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
-    expect(after.map((m) => m.content)).toEqual(before.map((m) => m.content));
-
-    const afterProgress = await prisma.progress.findUnique({
-      where: { learnerId_lessonId: { learnerId: learner, lessonId } },
-    });
-    expect(afterProgress?.completed).toBe(true);
   });
 
   it("the messages API returns 409 for a post-complete turn and leaves the transcript unchanged", async () => {
