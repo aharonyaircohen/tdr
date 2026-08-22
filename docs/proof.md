@@ -1,10 +1,12 @@
 # Vertical slice proof
 
-This document captures the proof artifacts for the TDR learner journey on
-`aharonyaircohen/tdr`:
+This document captures the cumulative proof artifacts for the TDR learner
+journey on `aharonyaircohen/tdr`. Each merged issue is listed below in
+chronological order together with the PR that landed it; every later section
+in this doc builds on the earlier ones.
 
-- **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey
-  (the working foundation this PR builds on).
+- **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey.
+  The original foundation the later issues extend.
 - **Issue #3 / PR #4** — Learner UI polish: removed the stray bullet before
   the course card on the catalog, and replaced the oversized lesson textarea +
   send button with a compact chat composer that grows naturally with content.
@@ -17,13 +19,13 @@ This document captures the proof artifacts for the TDR learner journey on
   `npm run db:reset` remains the only destructive reset path; Playwright
   uses the dev-only `POST /api/dev/reset` endpoint (gated on
   `ALLOW_DEV_RESET=true`) for an isolated, clean state during e2e runs.
-- **Issue #9 / this PR** — Recover from an incorrect chat answer:
+- **Issue #9 / PR #10** — Recover from an incorrect chat answer:
   the rule-based chat engine now lets a learner who types a wrong reply
   retry and advance the lesson. The wrong turn stays visible in the
   transcript, the engine surfaces concise retry feedback that names the
   scripted learner prompt, and refreshing the page preserves the ability
   to retry. Existing correct journeys are unchanged.
-- **Issue #11 / this PR** — Enforce the existing sequential lesson path:
+- **Issue #11 / PR #12** — Enforce the existing sequential lesson path:
   `canEnterLesson` is now the single policy owner for forward navigation.
   The course overview renders future lessons as `Locked` (no link, brief
   explanation) instead of `Up next`, a direct URL to a locked future
@@ -32,6 +34,16 @@ This document captures the proof artifacts for the TDR learner journey on
   lesson is complete. The seed, message, and completion APIs enforce the
   same rule and return `409` for locked mutations. Past completed lessons
   remain reviewable.
+- **Issue #15 / PR #16** — Keep completed lesson transcripts stable after
+  refresh: when a learner reopens a lesson they have already completed, the
+  transcript renders as it was at completion (including the final closing
+  tutor reply), the lesson is treated as read-only, and a refresh does not
+  re-seed or duplicate any rows.
+- **Issue #17 / PR #18** — Refresh course activity on every successful chat
+  turn: the home dashboard's **Continue learning** card always reflects the
+  most-recent unfinished course the learner touched. Touching course A,
+  then B, then A again correctly returns the Continue card to A — no stale
+  ordering from before the most-recent activity.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.
@@ -297,6 +309,79 @@ retry message may display them; matching keywords remain internal.
 All 57 unit/integration tests pass (was 49 before this change); the new
 e2e test extends the existing Playwright suite without touching the
 existing four journeys.
+
+## 4c. Stable completed lesson transcripts (issue #15 / PR #16)
+
+Substantive-change CI: [run 32589953857](https://github.com/aharonyaircohen/tdr/actions/runs/32589953857)
+passed `npm run verify` (71 verification tests) and 10 Playwright journeys.
+
+Previously, reopening a lesson the learner had already completed would
+re-seed it on every refresh, dropping the closing tutor reply and turning
+the transcript into a single fresh prompt. The fix lives in
+`src/lib/service.ts`: a completed lesson is no longer auto-seeded on
+read — only `Message` rows that already exist for that lesson are returned,
+in their original order. The POST messages handler also refuses further
+turns on a completed lesson and returns the existing transcript, so the
+closing tutor line and the learner's final reply stay intact across
+refreshes and across the message API.
+
+### Behavior summary
+
+| Step | Behavior |
+|---|---|
+| Learner completes a lesson | Closing tutor reply is persisted as the last `Message` row. |
+| Learner refreshes / reopens the completed lesson | Transcript renders the same closing tutor reply; no re-seed, no duplicate rows, the lesson is read-only. |
+| Learner POSTs to `/api/lessons/:id/messages` on a completed lesson | Existing transcript is returned untouched; no new rows are written. |
+| Learner navigates to a not-yet-completed lesson | Unchanged — the seed prompt appears as before, the lesson can still be driven to completion. |
+
+### Coverage
+
+- `tests/integration/journey.test.ts` — 3 new integration tests using the
+  real SQLite DB and the real `sendTurn` service: the closing tutor reply
+  persists and re-renders verbatim on reopen, a refresh mid-lesson does
+  not duplicate the opening prompt, and a completed lesson rejects further
+  turns without rewriting the transcript.
+- `tests/e2e/learner-journey.spec.ts` — 1 new Playwright test under
+  "Learner can see a completed lesson's transcript on refresh": drive a
+  lesson to completion, hard reload, assert the closing tutor bubble and
+  the final learner bubble are still present and a second reload does not
+  produce a fresh opening line.
+
+## 4d. Continue card follows the most-recent activity (issue #17 / PR #18)
+
+Substantive-change CI: [run 32590821527](https://github.com/aharonyaircohen/tdr/actions/runs/32590821527)
+passed `npm run verify` (73 verification tests) and 11 Playwright journeys.
+
+The home dashboard picks the **Continue learning** course via
+`pickRecentActiveCourse` in `src/lib/progress.ts`. Before this change,
+`Progress.updatedAt` only changed on lesson completion — a chat turn
+mid-lesson never refreshed the course's "last activity" stamp, so once a
+learner touched course B, returning to course A later did not bounce the
+Continue card back to A. The fix touches `sendTurn` in `src/lib/service.ts`:
+every successful chat turn now touches the active lesson's `Progress`
+row's `updatedAt` so the per-course activity ordering always reflects the
+most-recent thing the learner did, not the most-recent completion.
+
+### Behavior summary
+
+| Sequence | Continue card |
+|---|---|
+| Start A → start B → return to A → make a turn | Points at A (most-recent activity). |
+| Start A → start B → make a turn in B | Stays on B (most-recent activity). |
+| Complete A → start B → make a turn in B | Points at B (A is complete and cannot replace an active one). |
+| Make turns in a single lesson | Continue card stays on that lesson's course; no flicker. |
+
+### Coverage
+
+- `tests/integration/journey.test.ts` — 3 new integration tests using the
+  real SQLite DB and the real `sendTurn` service: A → B → A activity flips
+  the Continue target back to A, completing A does not let A replace an
+  active B, and a mid-lesson turn is enough to refresh activity (no
+  completion required).
+- `tests/e2e/learner-journey.spec.ts` — 1 new Playwright test under
+  "Continue learning card follows the most-recent activity": drive A
+  partway, switch to B and drive B partway, switch back to A and make a
+  single turn, assert the Continue card on the home page points at A.
 
 ## 5. How to reproduce these screenshots locally
 
