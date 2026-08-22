@@ -13,6 +13,7 @@ import {
   pickResumeLesson,
 } from "@/lib/progress";
 import { listCourses } from "@/lib/service";
+import { retryFeedback, parseScript } from "@/lib/script";
 
 const testDbPath = path.resolve(process.cwd(), "prisma/test.db");
 
@@ -230,6 +231,132 @@ describe("sendTurn + resume flow", () => {
       where: { lessonId: lessons[0].id },
     });
     expect(after).toBe(before);
+  });
+
+  it("persists wrong learner turns and recovers when the learner retries with a matching answer", async () => {
+    const { lessons } = await seedFixtures();
+    const lessonId = lessons[0].id;
+    const learner = "test-learner";
+
+    // First learner turn is wrong — engine should surface retry feedback
+    // that names the scripted prompt, not the old generic nudge.
+    const wrong = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "watermelon",
+    });
+    expect(wrong.isComplete).toBe(false);
+    const script = parseScript(lessons[0].script);
+    const firstLearnerStep = script.find((s) => s.kind === "learner");
+    expect(firstLearnerStep).toBeDefined();
+    if (firstLearnerStep?.kind !== "learner") throw new Error("setup");
+    expect(wrong.tutorMessage.content).toBe(
+      retryFeedback(firstLearnerStep.prompt),
+    );
+    // The wrong learner turn AND the retry feedback must both be persisted.
+    const messagesAfterWrong = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(messagesAfterWrong.map((m) => m.role)).toEqual([
+      "tutor",
+      "learner",
+      "tutor",
+    ]);
+    expect(messagesAfterWrong[1].content).toBe("watermelon");
+    expect(messagesAfterWrong[2].content).toBe(wrong.tutorMessage.content);
+
+    // A second wrong answer still surfaces retry feedback, not completion.
+    const wrongAgain = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "potato",
+    });
+    expect(wrongAgain.isComplete).toBe(false);
+    expect(wrongAgain.tutorMessage.content).toBe(
+      retryFeedback(firstLearnerStep.prompt),
+    );
+
+    // Now the matching retry — engine must walk past the two wrong turns
+    // and the retry-feedback tutor turns to advance the lesson.
+    const recovered = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "yes",
+    });
+    expect(recovered.isComplete).toBe(false);
+    expect(recovered.tutorMessage.content).toBe("Great — you are ready.");
+
+    // Finish the lesson normally to prove the recovery path leads to the
+    // same completion behavior as a clean walkthrough.
+    const finished = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "done",
+    });
+    expect(finished.isComplete).toBe(true);
+    expect(finished.tutorMessage.content).toContain("Lesson complete");
+
+    const allMessages = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    // The wrong turns stay visible — nothing is deleted, just left in the
+    // transcript as part of the learner’s recovery path.
+    expect(allMessages.map((m) => m.role)).toEqual([
+      "tutor", // opening
+      "learner", // wrong 1
+      "tutor", // retry feedback 1
+      "learner", // wrong 2
+      "tutor", // retry feedback 2
+      "learner", // correct retry
+      "tutor", // advance
+      "learner", // "done"
+      // final tutor line is the in-memory terminal placeholder, not persisted.
+    ]);
+    expect(allMessages[1].content).toBe("watermelon");
+    expect(allMessages[3].content).toBe("potato");
+    expect(allMessages[5].content).toBe("yes");
+
+    const progress = await prisma.progress.findUnique({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId } },
+    });
+    expect(progress?.completed).toBe(true);
+  });
+
+  it("persisted wrong turns do not poison replay after a refresh — the lesson resumes and the next correct reply advances", async () => {
+    const { lessons } = await seedFixtures();
+    const lessonId = lessons[0].id;
+    const learner = "test-learner";
+
+    // Persist a wrong turn and the resulting retry feedback.
+    await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "watermelon",
+    });
+
+    // Simulate the learner closing the tab and coming back — the engine must
+    // load the persisted transcript (with the wrong turn in it) and still
+    // accept a matching retry on the next send.
+    const messagesOnReopen = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(messagesOnReopen.map((m) => m.role)).toEqual([
+      "tutor",
+      "learner",
+      "tutor",
+    ]);
+    expect(messagesOnReopen[1].content).toBe("watermelon");
+
+    const recovered = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "yes",
+    });
+    expect(recovered.isComplete).toBe(false);
+    expect(recovered.tutorMessage.content).toBe("Great — you are ready.");
   });
 });
 

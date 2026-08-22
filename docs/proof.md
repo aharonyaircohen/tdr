@@ -11,12 +11,18 @@ This document captures the proof artifacts for the TDR learner journey on
 - **Issue #5 / PR #6** — Learner dashboard: extend the existing learner
   journey so a learner can see more than one course, see independent progress
   on each, and continue the right unfinished course after switching away.
-- **Issue #7 / this PR** — Persistence across normal app restarts:
+- **Issue #7 / PR #8** — Persistence across normal app restarts:
   the seed script no longer wipes `Message` and `Progress` rows, so a
   normal `npm run dev` start preserves learner chat history and progress.
   `npm run db:reset` remains the only destructive reset path; Playwright
   uses the dev-only `POST /api/dev/reset` endpoint (gated on
   `ALLOW_DEV_RESET=true`) for an isolated, clean state during e2e runs.
+- **Issue #9 / this PR** — Recover from an incorrect chat answer:
+  the rule-based chat engine now lets a learner who types a wrong reply
+  retry and advance the lesson. The wrong turn stays visible in the
+  transcript, the engine surfaces concise retry feedback that names the
+  scripted learner prompt, and refreshing the page preserves the ability
+  to retry. Existing correct journeys are unchanged.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.
@@ -219,6 +225,67 @@ leaked state into the other.
 These screenshots are produced by `scripts/capture-dashboard-screenshots.mts`,
 which mirrors the journey the e2e test drives: home → start course A →
 home → start course B → home. Each viewport is captured at full page height.
+
+## 4b. Recovering from an incorrect chat answer (issue #9)
+
+Substantive-change CI: see the run linked at the bottom of this document.
+
+The rule-based engine in `src/lib/script.ts` previously replayed the
+persisted transcript and stopped at the first unmatched learner turn. That
+turn stayed in history, so every later correct retry was still evaluated
+behind it and the lesson could never advance. The generic nudge
+("I am waiting for your reply" / "I am a bit lost") also did not tell the
+learner what to retry.
+
+The fix is in `selectTutorReply`. The replay loop now skips a wrong learner
+reply and the exact retry feedback generated for that same step. It does not
+silently skip arbitrary tutor or ordering mismatches. After replay:
+
+- If the latest answer left the engine at the same learner step, the reply is
+  **concise retry feedback** that
+  references the scripted learner prompt:
+  `That doesn't match what I'm looking for. Try again — I'm asking: <prompt>.`
+- Otherwise the engine returns the natural waiting nudge (no wrong turns
+  in the transcript).
+
+The wrong learner turn and the retry feedback are both persisted as
+normal `Message` rows so the learner can see what they tried and what the
+tutor wants. A later matching reply still advances the lesson as if the
+wrong turn had never happened — there is no transcript-poisoning.
+Seeded lesson prompts are written as learner-facing instructions because the
+retry message may display them; matching keywords remain internal.
+
+### Behavior summary
+
+| Step | Engine behaviour |
+|---|---|
+| Learner types a wrong answer | Engine skips the wrong turn, emits retry feedback based on the current scripted prompt. |
+| Learner refreshes / reopens the tab | Persisted transcript (including the wrong turn + retry feedback) is loaded; engine still knows where it is in the script. |
+| Learner retries with a matching answer | Engine skips past the wrong turn + retry feedback, emits the next scripted tutor line and the lesson advances normally. |
+| Correct-only journey (no wrong turns) | Unchanged — natural waiting nudge, same advance semantics. |
+
+### Coverage
+
+- `tests/unit/script.test.ts` — 6 new unit tests for the recovery branch:
+  retry feedback references the prompt, wrong → correct advances, several
+  wrong answers in a row, partial-progress wrong answer recovers, the
+  natural waiting state still uses the existing nudge, and `retryFeedback`
+  is deterministic.
+- `tests/integration/journey.test.ts` — 2 new integration tests using the
+  real SQLite DB and the real `sendTurn` service: a full wrong → wrong →
+  correct → complete walkthrough that asserts every persisted row
+  (`tutor`, `learner`, `tutor`, `learner`, `tutor`, `learner`, `tutor`,
+  `learner`), and a refresh-survival test that simulates reopening mid-
+  recovery.
+- `tests/e2e/learner-journey.spec.ts` — 1 new Playwright test under
+  "Learner can recover from an incorrect chat answer": wrong reply →
+  retry-feedback bubble containing the prompt text → hard reload → the
+  wrong reply is still there → matching retry → lesson advances → drive
+  the rest of the lesson to completion with `1 / 3` in the header.
+
+All 57 unit/integration tests pass (was 49 before this change); the new
+e2e test extends the existing Playwright suite without touching the
+existing four journeys.
 
 ## 5. How to reproduce these screenshots locally
 
