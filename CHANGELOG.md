@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #11: Enforce the existing sequential lesson path ([#12](https://github.com/aharonyaircohen/tdr/pull/12)) — @aharonyaircohen
 - #11: Enforce the existing sequential lesson path — future lessons are locked on the course overview, a direct URL to a locked lesson redirects to the resume lesson in the same course, and the in-lesson Next lesson action appears only after the current lesson is complete (past completed lessons remain reviewable). `canEnterLesson` is the single policy owner.
 - #9: Let learners recover from an incorrect chat answer ([#10](https://github.com/aharonyaircohen/tdr/pull/10)) — @aharonyaircohen
 - #9: Let learners recover from an incorrect chat answer — wrong replies stay visible, the engine emits concise retry feedback that names the scripted learner prompt, and a later matching reply advances the lesson (refresh-safe)
