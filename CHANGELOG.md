@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #19: Update cumulative proof for completed transcript and course activi… ([#20](https://github.com/aharonyaircohen/tdr/pull/20)) — @aharonyaircohen
 - #17: Refresh course activity on every successful chat turn ([#18](https://github.com/aharonyaircohen/tdr/pull/18)) — @aharonyaircohen
 - #15: Keep completed lesson transcripts stable after refresh ([#16](https://github.com/aharonyaircohen/tdr/pull/16)) — @aharonyaircohen
 - #13: Document the current single-learner transcript boundary accurately ([#14](https://github.com/aharonyaircohen/tdr/pull/14)) — @aharonyaircohen
