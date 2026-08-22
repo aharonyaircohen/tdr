@@ -22,7 +22,7 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByRole("heading", { name: /The Digital Reality/i }),
     ).toBeVisible();
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
 
     // The course view should auto-redirect into the first lesson.
     await expect(page).toHaveURL(
@@ -77,7 +77,7 @@ test.describe("Learner journey — full vertical slice", () => {
     const fresh = await ctx.browser()!.newContext();
     const newPage = await fresh.newPage();
     await newPage.goto("/");
-    await newPage.getByTestId("open-course-intro-to-llms").click();
+    await newPage.getByTestId("continue-course-intro-to-llms").click();
     await expect(newPage).toHaveURL(/\/lessons\/tokens-and-context$/, {
       timeout: 15_000,
     });
@@ -191,7 +191,7 @@ test.describe("Learner journey — full vertical slice", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
     await expect(page).toHaveURL(/\/lessons\/what-is-llm$/);
     await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
       timeout: 15_000,
@@ -249,7 +249,7 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByRole("heading", { name: /The Digital Reality/i }),
     ).toBeVisible();
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
     await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
     await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
       timeout: 15_000,
@@ -266,6 +266,9 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByTestId("chat-transcript").locator("[data-testid=bubble-learner]"),
     ).toHaveCount(1, { timeout: 10_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
 
     await page.getByTestId("chat-input").fill(
       "I've heard about them on podcasts and read a couple of beginner articles, so I know a little about how they work but I would not call myself an expert.",
@@ -285,5 +288,178 @@ test.describe("Learner journey — full vertical slice", () => {
     });
     expect(bubbleOverflows).toBeLessThanOrEqual(1);
     await ctx.close();
+  });
+});
+
+test.describe("Learner dashboard — multi-course", () => {
+  test.beforeEach(async () => {
+    const ctx = await request.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    });
+    const res = await ctx.post("/api/dev/reset");
+    if (!res.ok()) {
+      throw new Error(`reset failed: ${res.status()} ${await res.text()}`);
+    }
+    await ctx.dispose();
+  });
+
+  test("home shows both courses with independent state and a Continue card only when progress exists", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(
+      page.getByRole("heading", { name: /The Digital Reality/i }),
+    ).toBeVisible();
+    // Before any progress: no Continue card, both courses Not started.
+    await expect(page.getByTestId("continue-card")).toHaveCount(0);
+    await expect(
+      page.getByTestId("state-badge-intro-to-llms"),
+    ).toHaveText("Not started");
+    await expect(
+      page.getByTestId("state-badge-prompting-patterns"),
+    ).toHaveText("Not started");
+
+    // Make one in-progress turn on course A.
+    await page.getByTestId("start-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/);
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByTestId("chat-input").fill("next");
+    await page.getByTestId("chat-send").click();
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+
+    // Return home — Continue card now appears, course A is in progress,
+    // course B remains not started.
+    await page.goto("/");
+    await expect(page.getByTestId("continue-card")).toBeVisible();
+    await expect(page.getByTestId("continue-card")).toContainText(
+      "Intro to Large Language Models",
+    );
+    await expect(page.getByTestId("continue-progress-count")).toContainText(
+      "0 / 3",
+    );
+    await expect(
+      page.getByTestId("state-badge-intro-to-llms"),
+    ).toHaveText("0 / 3 complete");
+    await expect(
+      page.getByTestId("state-badge-prompting-patterns"),
+    ).toHaveText("Not started");
+  });
+
+  test("two independent courses → home summaries → close/reopen → correct resume target", async ({
+    browser,
+  }) => {
+    // First context: drive course A partway, then start course B.
+    {
+      const ctx = await browser.newContext();
+      const page = await ctx.newPage();
+      await page.goto("/");
+
+      // Start course A — make one in-progress turn on lesson 1.
+      await page.getByTestId("start-course-intro-to-llms").click();
+      await expect(page).toHaveURL(/\/lessons\/what-is-llm$/);
+      await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.getByTestId("chat-input").fill("next");
+      await page.getByTestId("chat-send").click();
+      await expect(
+        page
+          .getByTestId("chat-transcript")
+          .locator("[data-testid=bubble-learner]"),
+      ).toHaveCount(1, { timeout: 10_000 });
+      await expect(
+        page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+      ).toHaveCount(2, { timeout: 10_000 });
+
+      // Go home and start course B — make one in-progress turn.
+      await page.goto("/");
+      // Continue card should still point at course A (most recent unfinished).
+      await expect(page.getByTestId("continue-card")).toContainText(
+        "Intro to Large Language Models",
+      );
+      await page.getByTestId("start-course-prompting-patterns").click();
+      await expect(page).toHaveURL(/\/lessons\/role-and-audience$/);
+      await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.getByTestId("chat-input").fill("next");
+      await page.getByTestId("chat-send").click();
+      await expect(
+        page
+          .getByTestId("chat-transcript")
+          .locator("[data-testid=bubble-learner]"),
+      ).toHaveCount(1, { timeout: 10_000 });
+      await expect(
+        page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+      ).toHaveCount(2, { timeout: 10_000 });
+
+      // Return home — Continue card must now point at course B (most recent).
+      await page.goto("/");
+      await expect(page.getByTestId("continue-card")).toContainText(
+        "Prompting patterns for engineers",
+      );
+      // Both courses show independent in-progress state.
+      await expect(
+        page.getByTestId("state-badge-intro-to-llms"),
+      ).toHaveText("0 / 3 complete");
+      await expect(
+        page.getByTestId("state-badge-prompting-patterns"),
+      ).toHaveText("0 / 3 complete");
+
+      await ctx.close();
+    }
+
+    // Second context: same learner — resume state must persist.
+    const fresh = await browser.newContext();
+    const page = await fresh.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("continue-card")).toBeVisible();
+    await expect(page.getByTestId("continue-card")).toContainText(
+      "Prompting patterns for engineers",
+    );
+    await expect(
+      page.getByTestId("state-badge-intro-to-llms"),
+    ).toHaveText("0 / 3 complete");
+    await expect(
+      page.getByTestId("state-badge-prompting-patterns"),
+    ).toHaveText("0 / 3 complete");
+
+    // Click the CTA — must land on course B's lesson 1 with prior transcript.
+    await page.getByTestId("continue-cta").click();
+    await expect(page).toHaveURL(/\/lessons\/role-and-audience$/, {
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2);
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1);
+
+    // Now go to course A — its transcript must be unchanged.
+    await page.goto("/");
+    await page.getByTestId("continue-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2); // opening + "Great. An LLM is trained ..."
+    await expect(
+      page
+        .getByTestId("chat-transcript")
+        .locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1); // "next"
+
+    await fresh.close();
   });
 });

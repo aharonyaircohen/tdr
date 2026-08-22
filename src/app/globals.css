@@ -63,6 +63,81 @@ header.page-header h1 {
 .course-card h2 { margin: 0 0 4px; font-size: 18px; }
 .course-card p { margin: 0 0 12px; color: var(--muted); }
 
+.course-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.state-badge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.state-badge.state-not-started {
+  background: #eef0ec;
+  color: var(--muted);
+}
+.state-badge.state-in-progress {
+  background: #e1ead1;
+  color: #2f5b2f;
+}
+.state-badge.state-complete {
+  background: #c8e0c8;
+  color: #1f4a2a;
+}
+
+.continue-card {
+  background: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 28px;
+  box-shadow: 0 2px 0 rgba(47, 111, 79, 0.06);
+}
+.continue-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.continue-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.continue-next { margin: 0 0 16px; }
+.continue-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.continue-progress .progress-bar { margin-top: 0; }
+.continue-cta {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.continue-cta:hover { background: #265a3f; text-decoration: none; }
+
+.catalog-section { margin-top: 8px; }
+.section-heading {
+  font-size: 16px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .lesson-list {
   list-style: none;
   padding: 0;
@@ -261,6 +336,9 @@ html, body { overflow-x: hidden; }
     gap: 8px;
   }
   .course-card { padding: 16px 18px; }
+  .course-card-header { flex-wrap: wrap; gap: 6px; }
+  .continue-card { padding: 18px 18px; }
+  .continue-cta { width: 100%; text-align: center; }
   .lesson-item {
     flex-wrap: wrap;
     gap: 6px;

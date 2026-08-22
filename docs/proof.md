@@ -5,15 +5,21 @@ This document captures the proof artifacts for the TDR learner journey on
 
 - **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey
   (the working foundation this PR builds on).
-- **Issue #3 / this PR** — Learner UI polish: removed the stray bullet before
+- **Issue #3 / PR #4** — Learner UI polish: removed the stray bullet before
   the course card on the catalog, and replaced the oversized lesson textarea +
   send button with a compact chat composer that grows naturally with content.
-  **This PR is UI polish on the existing working learner journey — NOT a new
-  application foundation.** No new stack, router, persistence, or APIs were
-  introduced; the journey, data model, and persistence are untouched.
+- **Issue #5 / this PR** — Learner dashboard: extend the existing learner
+  journey so a learner can see more than one course, see independent progress
+  on each, and continue the right unfinished course after switching away.
+  **This PR is an extension of the existing working journey — NOT a new
+  application foundation.** No new stack, router, persistence, auth, or LLM
+  was introduced; the four-table data model, chat engine, and APIs are
+  preserved. The home page gains a Continue learning card and the catalog
+  gains per-course state. A second seeded course
+  ("Prompting patterns for engineers") exercises the isolation invariants.
 
 All transcripts and screenshots below were captured against the real running
-app against commits on this branch (the polish branch for issue #3).
+app on the branch for the change described by each section.
 
 ## 1. One-command fresh setup
 
@@ -145,6 +151,70 @@ stays compact at the bottom.
 
 ![Lesson on a mobile viewport — composer + scrollable transcript](screenshots/12-lesson-mobile.png)
 
+## 4a. Multi-course learner dashboard (issue #5)
+
+Substantive-change CI: [run 32584922139](https://github.com/aharonyaircohen/tdr/actions/runs/32584922139)
+passed repository verification and all six Playwright journeys.
+
+The home page is now a dashboard with two regions:
+
+- **Continue learning** — a single card that surfaces the most-recently-active
+  unfinished course. Hidden when no course has progress.
+- **All courses** — the full catalog, with per-course state
+  (`Not started`, `x / y complete`, `Complete`) and a primary action
+  (`Start course →`, `Continue →`, or `Review →`).
+
+Selection logic lives in `src/lib/progress.ts`:
+
+- `pickRecentActiveCourse(courses, learnerId)` — returns the unfinished course
+  whose most-recent `Progress.updatedAt` is the latest. A complete course is
+  never a candidate, even if its activity is more recent.
+- `summariseCourseProgress(course, learnerId)` — derives `state`, `completed`,
+  `total`, and `lastActivityAt` per course.
+
+Both helpers are unit-tested in `tests/unit/progress.test.ts` (10 new
+assertions) and integration-tested in `tests/integration/journey.test.ts` (4
+new assertions covering isolation and the multi-course `listCourses`
+payload). The Playwright suite adds two e2e tests under
+`Learner dashboard — multi-course`.
+
+### 1. Empty dashboard — no progress
+
+Both seeded courses show **Not started**, no Continue card. Course B
+("Prompting patterns for engineers") is now visible in the catalog.
+
+![Dashboard empty — desktop](screenshots/13-dashboard-empty-desktop.png)
+
+![Dashboard empty — mobile](screenshots/13-dashboard-empty-mobile.png)
+
+### 2. One course started — Continue card points at it
+
+The learner makes one in-progress turn on "Intro to Large Language Models".
+The home page shows a Continue card for that course (0 / 3 complete); the
+second course remains Not started.
+
+![Dashboard with one course in progress — desktop](screenshots/14-dashboard-one-course-desktop.png)
+
+![Dashboard with one course in progress — mobile](screenshots/14-dashboard-one-course-mobile.png)
+
+### 3. Two courses, Continue card follows activity
+
+The learner then makes one in-progress turn on "Prompting patterns for
+engineers". The Continue card switches to that course (its `updatedAt` is
+more recent), and each course card shows its own progress count
+independently — course A still reads 0 / 3, course B reads 0 / 3, neither has
+leaked state into the other.
+
+![Dashboard with two courses — desktop](screenshots/15-dashboard-two-courses-desktop.png)
+
+![Dashboard with two courses — mobile](screenshots/15-dashboard-two-courses-mobile.png)
+
+### Capture
+
+These screenshots are produced by `scripts/capture-dashboard-screenshots.mts`,
+which mirrors the journey the e2e test drives: home → start course A →
+home → start course B → home. Each viewport is captured at full page height.
+
 ## 5. How to reproduce these screenshots locally
 
 ```bash
@@ -155,6 +225,8 @@ E2E_BASE_URL=http://127.0.0.1:3000 \
   npx tsx scripts/capture-proof.mts
 E2E_BASE_URL=http://127.0.0.1:3000 \
   npx tsx scripts/capture-polish-screenshots.mts
+E2E_BASE_URL=http://127.0.0.1:3000 \
+  npx tsx scripts/capture-dashboard-screenshots.mts
 ls docs/screenshots/
 ```
 
@@ -209,20 +281,25 @@ another checkout. Set `E2E_BASE_URL` to use an isolated port when needed.
 | E2E stopped at 2/3 lessons | E2E drives lesson 3 to completion and asserts `3 / 3`. |
 | Concurrent first-visit requests could duplicate the opening tutor message | The seed route uses a deterministic message id with an atomic upsert; an integration regression sends two concurrent requests and proves exactly one message persists. |
 
-## 8. Acceptance criteria map (issue #1 + #3)
+## 8. Acceptance criteria map (issue #1 + #3 + #5)
 
 | Criterion | Where it's covered |
 |---|---|
 | Stack chosen, justified, lockfile committed | `README.md`, `package-lock.json` |
 | One-command local dev | `npm ci && npm run dev` |
-| Seed script creates ≥ 1 course, ≥ 3 lessons, idempotent | `prisma/seed.ts` (upsert by slug, deletes orphan messages) |
+| Seed script creates ≥ 1 course, ≥ 3 lessons, idempotent | `prisma/seed.ts` (upsert by slug, deletes orphan messages); now two courses × 3 lessons |
 | Learner can complete the full journey | `tests/e2e/learner-journey.spec.ts` + `docs/screenshots/` |
 | Unit tests for chat turn endpoint + progress/resume | `tests/unit/script.test.ts`, `tests/unit/progress.test.ts`, `tests/integration/journey.test.ts` |
 | Unit tests for the compact composer's auto-grow | `tests/unit/composer.test.ts` (7 tests: empty / short / measured wrap / max / collapse / custom opts) |
+| Unit tests for per-course progress summaries | `tests/unit/progress.test.ts` → `summariseCourseProgress` (4 cases) |
+| Unit tests for most-recent unfinished-course selection | `tests/unit/progress.test.ts` → `pickRecentActiveCourse` (6 cases) |
+| Integration tests for multi-course isolation | `tests/integration/journey.test.ts` → `multi-course dashboard helpers` (4 cases) |
 | E2E test drives full journey (all 3 lessons) | `tests/e2e/learner-journey.spec.ts` |
 | E2E covers the catalog stray-bullet fix | `tests/e2e/learner-journey.spec.ts` → "catalog has no stray bullet" |
 | E2E covers the compact composer's auto-grow | `tests/e2e/learner-journey.spec.ts` → "lesson composer is compact initially and grows" |
 | E2E covers mobile viewport usability | `tests/e2e/learner-journey.spec.ts` → "chat is usable on a mobile viewport" |
+| E2E covers dashboard empty / single-course / two-course state | `tests/e2e/learner-journey.spec.ts` → "Learner dashboard — multi-course" (2 tests) |
 | CI workflow runs lint + typecheck + unit + e2e, green on the PR | `.github/workflows/ci.yml` |
 | README + ARCHITECTURE explain data model + flows | `README.md`, `ARCHITECTURE.md` |
+| Real desktop + mobile screenshots of dashboard before progress and with independent progress in two courses | `docs/screenshots/13-*.png`, `docs/screenshots/14-*.png`, `docs/screenshots/15-*.png` |
 | This proof doc with dev command, HTTP transcript, polish screenshots | `docs/proof.md`, `docs/proof-http-transcript.txt`, `docs/screenshots/` |
