@@ -17,12 +17,13 @@ import {
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const ALICE_PORT = 3000;
-const BOB_PORT = 3100;
-const ALICE_URL = `http://127.0.0.1:${ALICE_PORT}`;
+const ALICE_URL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
+const alicePort = Number(new URL(ALICE_URL).port || "3000");
+const BOB_PORT = Number(process.env.E2E_SECOND_PORT ?? alicePort + 1);
 const BOB_URL = `http://127.0.0.1:${BOB_PORT}`;
-const ALICE_LEARNER = "alice";
 const BOB_LEARNER = "bob";
+
+test.setTimeout(120_000);
 
 let bobServer: ChildProcess | null = null;
 
@@ -66,6 +67,7 @@ test.beforeAll(async () => {
         NODE_ENV: "development",
         // Suppress Next.js telemetry prompt noise during the spawn.
         NEXT_TELEMETRY_DISABLED: "1",
+        NEXT_DIST_DIR: ".next-bob",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },

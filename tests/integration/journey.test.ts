@@ -132,6 +132,35 @@ async function seedFixtures() {
   return { course, lessons };
 }
 
+describe("development reset", () => {
+  it("leaves messages and progress empty until a learner enters a lesson", async () => {
+    const { lessons } = await seedFixtures();
+    await prisma.message.create({
+      data: {
+        lessonId: lessons[0].id,
+        learnerId: "reset-learner",
+        role: "tutor",
+        content: "existing opening",
+      },
+    });
+    await prisma.progress.create({
+      data: {
+        lessonId: lessons[0].id,
+        learnerId: "reset-learner",
+        completed: false,
+      },
+    });
+
+    process.env.ALLOW_DEV_RESET = "true";
+    const resetRoute = await import("@/app/api/dev/reset/route");
+    const response = await resetRoute.POST();
+
+    expect(response.status).toBe(200);
+    expect(await prisma.message.count()).toBe(0);
+    expect(await prisma.progress.count()).toBe(0);
+  });
+});
+
 describe("sendTurn + resume flow", () => {
   it("seeds exactly one opening tutor message under concurrent retries", async () => {
     const { lessons } = await seedFixtures();
@@ -1129,6 +1158,15 @@ describe("seed script preserves learner state across a normal re-run", () => {
     for (const m of upgraded) {
       expect(m.learnerId).toBe("demo-learner");
     }
+
+    // The temporary legacy default must not survive the schema sync. New
+    // writers must provide an owner instead of silently becoming demo data.
+    const messageColumns = await prisma.$queryRawUnsafe<
+      Array<{ name: string; notnull: bigint; dflt_value: string | null }>
+    >("PRAGMA table_info(Message)");
+    const learnerColumn = messageColumns.find((column) => column.name === "learnerId");
+    expect(learnerColumn?.notnull).toBe(1n);
+    expect(learnerColumn?.dflt_value).toBeNull();
 
     // The backfill must be idempotent on a second run — running it again
     // must not drop, rename, or rewrite any rows.
