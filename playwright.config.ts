@@ -9,6 +9,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   globalSetup: "./tests/e2e/global-setup.ts",
+  webServer: {
+    command: "ALLOW_DEV_RESET=true npm run dev",
+    url: "http://127.0.0.1:3000",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
     trace: "retain-on-failure",

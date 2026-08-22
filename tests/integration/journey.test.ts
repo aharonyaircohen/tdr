@@ -18,6 +18,9 @@ function freshDb() {
       // ignore
     }
   }
+  // Prisma cannot create a missing SQLite file on every supported filesystem,
+  // but it can initialize an existing empty file.
+  fs.closeSync(fs.openSync(testDbPath, "a"));
   // Schema path is relative to the schema file, so "./test.db" inside the
   // .env.test maps to prisma/test.db.
   try {
