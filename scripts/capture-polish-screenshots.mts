@@ -24,6 +24,12 @@ async function shot(page: Page, name: string) {
   console.log(`captured ${file}`);
 }
 
+async function viewportShot(page: Page, name: string) {
+  const file = resolve(OUT, `${name}.png`);
+  await page.screenshot({ path: file, fullPage: false });
+  console.log(`captured ${file}`);
+}
+
 async function enterLesson(page: Page) {
   await page.goto(BASE);
   await page.getByTestId("open-course-intro-to-llms").click();
@@ -120,7 +126,8 @@ const browser = await chromium.launch();
     () => document.querySelectorAll('[data-testid="bubble-learner"]').length === 2,
     { timeout: 15_000 },
   );
-  await shot(page, "12-lesson-mobile");
+  await page.getByTestId("chat-form").scrollIntoViewIfNeeded();
+  await viewportShot(page, "12-lesson-mobile");
   await ctx.close();
 }
 

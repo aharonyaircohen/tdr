@@ -124,7 +124,9 @@ The sibling `<ul class="lesson-list">` already had the right reset. Fix: added
 The lesson footer was previously a tall textarea + a stretched send button
 that consumed most of the chat shell. It is now a single-line-by-default
 rounded composer with the send button attached on the right. The textarea
-grows up to ~200px and then scrolls internally. Enter sends, Shift+Enter
+uses its real browser `scrollHeight`, so wrapped text grows correctly at the
+actual desktop or mobile width. It grows up to 200px and then scrolls
+internally. Enter sends, Shift+Enter
 inserts a newline, focus ring is preserved, the send button keeps an
 `aria-label="Send reply"` for screen readers.
 
@@ -185,8 +187,11 @@ The four e2e tests on this branch are:
 
 The vertical-slice PR (#2) had a passing CI run:
 [Passing CI run 32581571095](https://github.com/aharonyaircohen/tdr/actions/runs/32581571095).
-This polish PR's CI run URL will be linked from the PR description once the
-wrapper pushes and opens the PR.
+This polish PR passed both jobs in
+[CI run 32582725868](https://github.com/aharonyaircohen/tdr/actions/runs/32582725868).
+Playwright owns the dev server and never reuses an arbitrary process already
+listening on the configured port, so a local result cannot silently come from
+another checkout. Set `E2E_BASE_URL` to use an isolated port when needed.
 
 ## 7. Audit fixes from the prior PR
 
@@ -212,7 +217,7 @@ wrapper pushes and opens the PR.
 | Seed script creates ≥ 1 course, ≥ 3 lessons, idempotent | `prisma/seed.ts` (upsert by slug, deletes orphan messages) |
 | Learner can complete the full journey | `tests/e2e/learner-journey.spec.ts` + `docs/screenshots/` |
 | Unit tests for chat turn endpoint + progress/resume | `tests/unit/script.test.ts`, `tests/unit/progress.test.ts`, `tests/integration/journey.test.ts` |
-| Unit tests for the compact composer's auto-grow | `tests/unit/composer.test.ts` (7 tests: empty / short / multi-line / max / wrap / collapse / custom opts) |
+| Unit tests for the compact composer's auto-grow | `tests/unit/composer.test.ts` (7 tests: empty / short / measured wrap / max / collapse / custom opts) |
 | E2E test drives full journey (all 3 lessons) | `tests/e2e/learner-journey.spec.ts` |
 | E2E covers the catalog stray-bullet fix | `tests/e2e/learner-journey.spec.ts` → "catalog has no stray bullet" |
 | E2E covers the compact composer's auto-grow | `tests/e2e/learner-journey.spec.ts` → "lesson composer is compact initially and grows" |

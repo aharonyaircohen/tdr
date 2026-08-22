@@ -35,17 +35,16 @@ export function ChatLesson(props: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const router = useRouter();
 
-  // Keep the composer's measured height in sync with the current input.
-  // The pure helper in src/lib/composer.ts decides rows + scrollability.
-  const composerMetrics = computeComposerHeight(input);
+  // Keep the composer in sync with its actual rendered content width so soft
+  // wrapping grows correctly on both desktop and mobile.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    // Always reset to auto first so a *shrinking* textarea collapses too.
     el.style.height = "auto";
+    const composerMetrics = computeComposerHeight(el.scrollHeight);
     el.style.height = `${composerMetrics.heightPx}px`;
     el.style.overflowY = composerMetrics.scrollable ? "auto" : "hidden";
-  }, [composerMetrics.heightPx, composerMetrics.scrollable]);
+  }, [input]);
 
   const onComposerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
