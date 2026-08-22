@@ -1,0 +1,42 @@
+{
+  "name": "tdr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/prepare-sqlite.mjs prisma/dev.db && prisma generate && DATABASE_URL=file:./dev.db prisma db push --skip-generate --accept-data-loss && DATABASE_URL=file:./dev.db tsx prisma/seed.ts",
+    "predev": "npm run setup",
+    "dev": "DATABASE_URL=file:./dev.db CURRENT_LEARNER_ID=demo-learner next dev -p 3000",
+    "build": "next build",
+    "start": "DATABASE_URL=file:./dev.db CURRENT_LEARNER_ID=demo-learner next start -p 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "DATABASE_URL=file:./dev.db prisma db push --skip-generate",
+    "db:seed": "DATABASE_URL=file:./dev.db tsx prisma/seed.ts",
+    "db:reset": "rm -f prisma/dev.db && npm run db:push && npm run db:seed",
+    "postinstall": "prisma generate",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "verify": "npm run typecheck && npm run lint && npm run test:unit"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "next": "16.3.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
+    "@playwright/test": "1.62.1",
+    "@types/node": "20.19.5",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.2",
+    "prisma": "5.22.0",
+    "tsx": "4.23.12",
+    "typescript": "5.6.3",
+    "vitest": "3.2.7"
+  }
+}

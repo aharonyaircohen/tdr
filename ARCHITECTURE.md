@@ -1,0 +1,148 @@
+# Architecture
+
+This document describes how the vertical slice is put together. It is intentionally small: one stack, four models, one chat turn flow, one resume flow.
+
+## Stack
+
+- **Next.js 14 App Router** (TypeScript) for both UI (React server components + one client component for the chat) and the HTTP API (`/api/lessons/[id]/...` route handlers).
+- **Prisma + SQLite** for persistence. The schema lives in `prisma/schema.prisma`.
+- **Vitest + Playwright** for tests.
+
+## Data model
+
+Four tables. See `prisma/schema.prisma`.
+
+```
+Course (1) ──< Lesson (n)
+Lesson (n) ──< Message (n)        // chat turns
+Lesson (n) ──< Progress (n)       // learner × lesson
+```
+
+- **Course**: `id`, `slug`, `title`, `description`, `createdAt`.
+- **Lesson**: `id`, `courseId`, `slug`, `title`, `order`, `script` (JSON-encoded `ScriptStep[]`), `createdAt`. Unique on `(courseId, slug)`.
+- **Message**: `id`, `lessonId`, `role` (`"tutor"` | `"learner"`), `content`, `createdAt`.
+- **Progress**: `id`, `learnerId`, `lessonId`, `completed`, `updatedAt`. Unique on `(learnerId, lessonId)`.
+
+### Why these tables
+
+- `Course` and `Lesson` are the canonical LMS shape; ordering is on `Lesson.order` so courses don't need a join table.
+- `Message` is append-only chat history, ordered by `createdAt`. Index on `(lessonId, createdAt)` for the common "load the transcript for a lesson" query.
+- `Progress` is intentionally one row per `(learner, lesson)` rather than a single per-course row. That makes "next unfinished lesson" (`pickResumeLesson`) trivial and keeps future multi-course progress cheap.
+
+## Chat turn flow
+
+```
+learner types in <textarea>
+       │
+       ▼
+client POST /api/lessons/:lessonId/messages     { content: "..." }
+       │
+       ▼
+route handler (`messages/route.ts`)
+       │  validates body, resolves learnerId from env
+       ▼
+service.sendTurn({ lessonId, learnerId, content })
+       │
+       │  prisma.$transaction:
+       │    1. INSERT Message (role: "learner")
+       │    2. SELECT all messages for lessonId ORDER BY createdAt
+       │    3. parseScript(lesson.script)
+       │    4. selectTutorReply(script, conversation) -> { content, isComplete, nextStepIndex }
+       │    5. INSERT Message (role: "tutor") with reply.content  (unless terminal)
+       │    6. UPSERT Progress (learnerId, lessonId) set completed = isComplete
+       ▼
+returns { learnerMessage, tutorMessage, isComplete }
+       │
+       ▼
+client prepends learner bubble, appends tutor bubble, refreshes server view
+```
+
+### Why a transaction
+
+The learner turn, the tutor turn, and the progress update either all land or all roll back. This prevents the "tutor answered but no progress row was created" inconsistency that would otherwise be observable after a server crash mid-transaction.
+
+### `selectTutorReply`
+
+`src/lib/script.ts`. Pure function. Inputs:
+
+- `script: ScriptStep[]` — either `{ kind: "tutor", content }` or `{ kind: "learner", prompt, expect: string[] }`.
+- `conversation: { role, content }[]` — every message persisted for the lesson, in order.
+
+Output: `{ content: string, isComplete: boolean, nextStepIndex: number }`.
+
+The algorithm walks the script and the conversation in lockstep. If the conversation agrees with the script so far, it advances to the next step. If the next step is a tutor line and there are no more conversation turns to consume, the tutor line is emitted. If the script is exhausted, the lesson is marked complete.
+
+The engine is deliberately small. It has no external dependencies, and is the only place where lesson-content rules live. Swapping in an LLM means replacing `selectTutorReply` with an LLM call that returns the same shape.
+
+## Resume flow
+
+```
+browser closes mid-lesson
+       │
+       ▼
+browser reopens → GET /
+       │
+       ▼
+learner clicks the course → GET /courses/:slug
+       │
+       │  service.getCourseWithLessons() returns course + lessons + this learner's progress
+       │  pickResumeLesson(lessons, learnerId) → first lesson with no Progress or !completed
+       │
+       ▼
+if no progress at all → redirect to /courses/:slug/lessons/:firstLessonSlug
+otherwise render lesson list with badges (Done / Current / Up next)
+       │
+       ▼
+learner clicks "Continue" → GET /courses/:slug/lessons/:resumeSlug
+       │
+       ▼
+ChatLesson client component
+  - hydrates with messages from getLessonWithMessages()
+  - shows the persisted transcript (prior turns restored)
+  - the learner picks up where they left off
+```
+
+### Resume correctness invariants
+
+1. `pickResumeLesson` returns the lowest-`order` lesson whose progress row is missing or has `completed = false`. (If everything is complete, it returns the last lesson.)
+2. `canEnterLesson(lessons, learnerId, targetId)` enforces ordering: the learner can only enter a lesson whose predecessors are all complete. (Currently the UI doesn't gate, but the helper is exported for use when admin/navigation features land.)
+3. Progress is upserted, not inserted, on every learner action — this makes resume idempotent across repeated sends.
+
+## File layout
+
+```
+prisma/
+  schema.prisma         # the four tables
+  seed.ts               # one course + three lessons, idempotent (upsert by slug)
+
+src/lib/
+  db.ts                 # singleton Prisma client
+  learner.ts            # resolves the (currently hard-coded) learner id
+  script.ts             # pure rule-based chat turn engine
+  progress.ts           # pickResumeLesson, canEnterLesson, isLessonComplete
+  service.ts            # the only writer to the DB from request handlers
+
+src/app/
+  layout.tsx
+  page.tsx                                    # course list
+  courses/[slug]/page.tsx                     # course view (lesson list + progress)
+  courses/[slug]/lessons/[lessonSlug]/
+    page.tsx                                   # server: hydrate transcript
+    chat-lesson.tsx                            # client: chat form + transcript
+  api/courses/route.ts                        # GET: list courses (JSON)
+  api/courses/[slug]/route.ts                 # GET: course + lessons (JSON)
+  api/lessons/[lessonId]/seed/route.ts        # POST: emit opening tutor line
+  api/lessons/[lessonId]/messages/route.ts    # POST: sendTurn
+  api/lessons/[lessonId]/complete/route.ts    # POST: explicit mark-complete
+
+tests/
+  unit/                # pure unit tests for script.ts and progress.ts
+  integration/         # DB-backed service tests (fresh sqlite per test)
+  e2e/                 # Playwright full-journey test
+```
+
+## Out of scope
+
+- Auth — `CURRENT_LEARNER_ID` env var stands in for a real session.
+- Multi-tenant, admin UI, course authoring, payments, analytics, notifications.
+- Streaming or real LLM. `selectTutorReply` is the seam.
