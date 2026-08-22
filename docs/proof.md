@@ -108,22 +108,20 @@ ls docs/screenshots/
 The CI workflow lives at `.github/workflows/ci.yml` and runs on every PR.
 It runs two jobs:
 
-1. **`lint-typecheck-unit`** — `npm ci` → `prisma generate` → `prisma db push`
-   → `npm run typecheck` → `npm run lint` → `npm run test:unit`.
-2. **`e2e`** — `npm ci` → `prisma generate` → `prisma db push` → seed the
-   demo course → install Playwright browsers → `npm run build` → start the
-   production server (with `ALLOW_DEV_RESET=true`) → `npm run test:e2e`.
-   Uploads `playwright-report/`, `test-results/`, and the server log as
-   artifacts.
+1. **`verify`** — `npm ci` → typecheck → lint → all unit and integration
+   tests (25/25).
+2. **`e2e`** — `npm ci` → install Chromium → `npm run test:e2e`. Playwright
+   starts the real dev server with database reset enabled, drives the complete
+   3/3 learner journey, and uploads its report.
 
-The passing CI run URL for the vertical-slice PR will be linked from the PR
-description.
+[Passing CI run 32581571095](https://github.com/aharonyaircohen/tdr/actions/runs/32581571095)
+proves both jobs on the vertical-slice PR.
 
 ## 6. Audit fixes from the prior PR
 
 | Issue found in prior PR | Fix |
 |---|---|
-| Missing `.github/workflows/ci.yml` | New workflow created (`lint-typecheck-unit` + `e2e` jobs), committed and tracked. |
+| Missing `.github/workflows/ci.yml` | New workflow created (`verify` + `e2e` jobs), committed and tracked. |
 | `docs/screenshots/` was gitignored | Removed `docs/screenshots/` from `.gitignore`; seven real PNGs are now tracked. |
 | `tsconfig.tsbuildinfo` committed | File removed from the index; `tsconfig.tsbuildinfo` stays in `.gitignore`. |
 | Fresh `npm ci && npm run verify` skipped all four integration tests | Real cause was Next.js 16's async route params and a stale `dev.db` inode; both fixed. All four integration tests now run (no `.skip`) and pass. |
