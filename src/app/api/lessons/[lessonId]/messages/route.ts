@@ -4,6 +4,7 @@ import {
   NotFoundError,
   BadInputError,
   LockedLessonError,
+  LessonCompleteError,
 } from "@/lib/service";
 import { getCurrentLearnerId } from "@/lib/learner";
 
@@ -63,6 +64,9 @@ export async function POST(
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
     if (e instanceof LockedLessonError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    if (e instanceof LessonCompleteError) {
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : "Unknown error";

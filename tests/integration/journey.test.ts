@@ -305,7 +305,9 @@ describe("sendTurn + resume flow", () => {
       orderBy: { createdAt: "asc" },
     });
     // The wrong turns stay visible — nothing is deleted, just left in the
-    // transcript as part of the learner’s recovery path.
+    // transcript as part of the learner’s recovery path. The closing
+    // tutor line is persisted like every other tutor turn, so the
+    // completed transcript survives a refresh.
     expect(allMessages.map((m) => m.role)).toEqual([
       "tutor", // opening
       "learner", // wrong 1
@@ -315,11 +317,16 @@ describe("sendTurn + resume flow", () => {
       "learner", // correct retry
       "tutor", // advance
       "learner", // "done"
-      // final tutor line is the in-memory terminal placeholder, not persisted.
+      "tutor", // closing line (persisted)
     ]);
     expect(allMessages[1].content).toBe("watermelon");
     expect(allMessages[3].content).toBe("potato");
     expect(allMessages[5].content).toBe("yes");
+    expect(allMessages[8].role).toBe("tutor");
+    expect(allMessages[8].content).toBe("Lesson complete.");
+    // The final tutor message must be a real persisted row, not the
+    // in-memory terminal-<timestamp> placeholder the bug used to fabricate.
+    expect(allMessages[8].id).not.toMatch(/^terminal-/);
 
     const progress = await prisma.progress.findUnique({
       where: { learnerId_lessonId: { learnerId: learner, lessonId } },
@@ -360,6 +367,129 @@ describe("sendTurn + resume flow", () => {
     });
     expect(recovered.isComplete).toBe(false);
     expect(recovered.tutorMessage.content).toBe("Great — you are ready.");
+  });
+});
+
+describe("completed lesson transcript stability", () => {
+  // Issue #15: once a learner's lesson progress is complete, the transcript
+  // must be immutable. The final scripted tutor reply must be persisted like
+  // every other tutor turn, and any further learner turn must be rejected
+  // without inserting anything.
+
+  it("persists the final scripted tutor reply and keeps it visible after reload", async () => {
+    const { lessons } = await seedFixtures();
+    const learner = "test-learner";
+    const lessonId = lessons[0].id;
+
+    await sendTurn({ lessonId, learnerId: learner, content: "yes" });
+    const finishing = await sendTurn({
+      lessonId,
+      learnerId: learner,
+      content: "done",
+    });
+    expect(finishing.isComplete).toBe(true);
+
+    // The closing tutor line MUST be a persisted Message row, not an
+    // in-memory fabricated id. The engine returns the scripted final tutor
+    // line "Lesson complete." for this fixture.
+    expect(finishing.tutorMessage.id).not.toMatch(/^terminal-/);
+    expect(finishing.tutorMessage.content).toBe("Lesson complete.");
+
+    // Simulate a reload: the transcript is read straight from storage.
+    const persisted = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(persisted.map((m) => m.role)).toEqual([
+      "tutor", // opening
+      "learner", // "yes"
+      "tutor", // "Great — you are ready."
+      "learner", // "done"
+      "tutor", // closing line — persisted
+    ]);
+    expect(persisted[4].id).toBe(finishing.tutorMessage.id);
+    expect(persisted[4].content).toBe("Lesson complete.");
+    expect(persisted.every((m) => !m.id.startsWith("terminal-"))).toBe(true);
+
+    // The returned tutor row id and the persisted row id must agree so
+    // the client UI's optimistic update never invents a row that the
+    // server cannot find.
+    const fromDb = await prisma.message.findUnique({
+      where: { id: finishing.tutorMessage.id },
+    });
+    expect(fromDb?.content).toBe("Lesson complete.");
+  });
+
+  it("the messages API returns 409 for a post-complete turn and leaves the transcript unchanged", async () => {
+    const { lessons } = await seedFixtures();
+    const lessonId = lessons[0].id;
+    process.env.CURRENT_LEARNER_ID = "test-learner";
+    const context = { params: Promise.resolve({ lessonId }) };
+    const messageRoute = await import(
+      "@/app/api/lessons/[lessonId]/messages/route"
+    );
+    const completeRoute = await import(
+      "@/app/api/lessons/[lessonId]/complete/route"
+    );
+
+    // Drive the lesson to completion through the API so the on-disk
+    // transcript is exactly what the learner would have produced.
+    let res = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "yes" }),
+      }),
+      context,
+    );
+    expect(res.status).toBe(200);
+    res = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "done" }),
+      }),
+      context,
+    );
+    expect(res.status).toBe(200);
+
+    const before = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    // The closing tutor line is now a real persisted row.
+    expect(before.some((m) => m.role === "tutor" && m.content === "Lesson complete.")).toBe(
+      true,
+    );
+
+    // A direct API call attempting another learner turn after completion
+    // must be rejected with 409 — this proves the UI's disabled composer
+    // is enforced at the shared mutation boundary, not just client-side.
+    const bypass = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "post-complete sneak" }),
+      }),
+      context,
+    );
+    expect(bypass.status).toBe(409);
+
+    const after = await prisma.message.findMany({
+      where: { lessonId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(after.length).toBe(before.length);
+    expect(after.map((m) => m.id)).toEqual(before.map((m) => m.id));
+    expect(after.map((m) => m.content)).toEqual(before.map((m) => m.content));
+
+    // Sanity: the explicit complete endpoint still works for already-complete
+    // lessons (it is upsert).
+    const completeAgain = await completeRoute.POST(
+      new Request("http://localhost/complete", { method: "POST" }),
+      context,
+    );
+    expect(completeAgain.status).toBe(200);
   });
 });
 
@@ -588,9 +718,10 @@ describe("multi-course dashboard helpers", () => {
     const learner = "iso-learner";
     process.env.CURRENT_LEARNER_ID = learner;
 
-    // Complete course A's first lesson.
+    // Complete course A's first lesson. The script for these fixtures ends
+    // with the closing tutor line, so a single matching learner turn
+    // completes the lesson.
     await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "yes" });
-    await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "ok" });
     // Make one in-progress turn on course B.
     await sendTurn({ lessonId: lessonsB[0].id, learnerId: learner, content: "yes" });
 
@@ -620,7 +751,6 @@ describe("multi-course dashboard helpers", () => {
     process.env.CURRENT_LEARNER_ID = learner;
 
     await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "yes" });
-    await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "ok" });
 
     const courses = await loadCoursesWithLessons(learner);
     const courseAFull = courses.find((c) => c.slug === "course-a")!;
