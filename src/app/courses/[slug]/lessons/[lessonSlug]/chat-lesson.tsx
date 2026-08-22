@@ -249,7 +249,7 @@ export function ChatLesson(props: Props) {
               Mark complete
             </button>
           ) : null}
-          {props.hasNext ? (
+          {props.hasNext && complete ? (
             <Link
               href={`/courses/${props.courseSlug}/lessons/${props.nextSlug}`}
               className="ghost"

@@ -11,6 +11,7 @@ import {
   summariseCourseProgress,
   pickRecentActiveCourse,
   pickResumeLesson,
+  canEnterLesson,
 } from "@/lib/progress";
 import { listCourses } from "@/lib/service";
 import { retryFeedback, parseScript } from "@/lib/script";
@@ -50,6 +51,7 @@ let sendTurn: typeof import("@/lib/service").sendTurn;
 let pickResumeLesson: typeof import("@/lib/progress").pickResumeLesson;
 let pickRecentActiveCourse: typeof import("@/lib/progress").pickRecentActiveCourse;
 let summariseCourseProgress: typeof import("@/lib/progress").summariseCourseProgress;
+let canEnterLesson: typeof import("@/lib/progress").canEnterLesson;
 let listCourses: typeof import("@/lib/service").listCourses;
 
 beforeAll(() => {
@@ -70,6 +72,7 @@ beforeEach(async () => {
   pickResumeLesson = prog.pickResumeLesson;
   pickRecentActiveCourse = prog.pickRecentActiveCourse;
   summariseCourseProgress = prog.summariseCourseProgress;
+  canEnterLesson = prog.canEnterLesson;
   listCourses = svc.listCourses;
 
   // Wipe data between tests (schema already exists from beforeAll).
@@ -357,6 +360,96 @@ describe("sendTurn + resume flow", () => {
     });
     expect(recovered.isComplete).toBe(false);
     expect(recovered.tutorMessage.content).toBe("Great — you are ready.");
+  });
+});
+
+describe("sequential path gating (canEnterLesson)", () => {
+  // Verifies the helper the lesson page uses to decide whether to redirect
+  // a direct future-lesson URL. The page redirects when canEnterLesson is
+  // false, so the integration assertion is: at each progress state, the
+  // locked lessons are exactly the ones with `canEnterLesson === false`,
+  // and the resume target the page redirects to is a lesson that IS
+  // enterable.
+  async function loadCourseWithLessons(learner: string) {
+    return prisma.course.findFirstOrThrow({
+      include: {
+        lessons: {
+          orderBy: { order: "asc" },
+          include: { progress: { where: { learnerId: learner } } },
+        },
+      },
+    });
+  }
+
+  it("lets lesson 1 open without any progress, but locks lesson 2", async () => {
+    const { lessons } = await seedFixtures();
+    const learner = "test-learner";
+    const course = await loadCourseWithLessons(learner);
+    expect(canEnterLesson(course.lessons, learner, lessons[0].id)).toBe(true);
+    expect(canEnterLesson(course.lessons, learner, lessons[1].id)).toBe(false);
+    // The redirect target must be enterable — i.e. lesson 1.
+    const resume = pickResumeLesson(course.lessons, learner);
+    expect(resume?.id).toBe(lessons[0].id);
+    expect(canEnterLesson(course.lessons, learner, resume!.id)).toBe(true);
+  });
+
+  it("still locks lesson 2 while lesson 1 is in-progress but not complete", async () => {
+    const { lessons } = await seedFixtures();
+    const learner = "test-learner";
+    await sendTurn({
+      lessonId: lessons[0].id,
+      learnerId: learner,
+      content: "yes",
+    });
+    const course = await loadCourseWithLessons(learner);
+    expect(canEnterLesson(course.lessons, learner, lessons[1].id)).toBe(false);
+    // Resume still points at lesson 1 (in-progress) and that target must
+    // remain enterable so the redirect lands somewhere usable.
+    const resume = pickResumeLesson(course.lessons, learner);
+    expect(resume?.id).toBe(lessons[0].id);
+    expect(canEnterLesson(course.lessons, learner, resume!.id)).toBe(true);
+  });
+
+  it("unlocks lesson 2 once lesson 1 is complete and stays reviewable", async () => {
+    const { lessons } = await seedFixtures();
+    const learner = "test-learner";
+    await sendTurn({
+      lessonId: lessons[0].id,
+      learnerId: learner,
+      content: "yes",
+    });
+    await sendTurn({
+      lessonId: lessons[0].id,
+      learnerId: learner,
+      content: "done",
+    });
+    const course = await loadCourseWithLessons(learner);
+    // Both lessons are now enterable: lesson 1 is reviewable, lesson 2 is
+    // open. The redirect target (lesson 2) is enterable, so an explicit
+    // visit to /lessons/lesson-1 still works without a redirect.
+    expect(canEnterLesson(course.lessons, learner, lessons[0].id)).toBe(true);
+    expect(canEnterLesson(course.lessons, learner, lessons[1].id)).toBe(true);
+    const resume = pickResumeLesson(course.lessons, learner);
+    expect(resume?.id).toBe(lessons[1].id);
+  });
+
+  it("treats lesson progress from other learners as no progress for gating", async () => {
+    const { lessons } = await seedFixtures();
+    // Simulate another learner completing lesson 1 — this learner must
+    // still see lesson 2 as locked.
+    await sendTurn({
+      lessonId: lessons[0].id,
+      learnerId: "other-learner",
+      content: "yes",
+    });
+    await sendTurn({
+      lessonId: lessons[0].id,
+      learnerId: "other-learner",
+      content: "done",
+    });
+    const learner = "test-learner";
+    const course = await loadCourseWithLessons(learner);
+    expect(canEnterLesson(course.lessons, learner, lessons[1].id)).toBe(false);
   });
 });
 

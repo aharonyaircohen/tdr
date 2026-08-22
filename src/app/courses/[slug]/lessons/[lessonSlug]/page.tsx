@@ -1,6 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getCourseWithLessons, getLessonWithMessages, pickResumeLesson } from "@/lib/service";
+import { notFound, redirect } from "next/navigation";
+import {
+  getCourseWithLessons,
+  getLessonWithMessages,
+  pickResumeLesson,
+  canEnterLesson,
+} from "@/lib/service";
 import { getCurrentLearnerId } from "@/lib/learner";
 import { ChatLesson } from "./chat-lesson";
 
@@ -15,10 +20,23 @@ export default async function LessonPage({ params }: { params: Promise<Params> }
   const lesson = course.lessons.find((l) => l.slug === lessonSlug);
   if (!lesson) notFound();
 
+  const learnerId = getCurrentLearnerId();
+
+  // Sequential-path rule: gate the route on the same `canEnterLesson` policy
+  // the UI uses. A direct URL for a locked future lesson redirects to the
+  // learner's current/resume lesson in the same course — past completed
+  // lessons remain reviewable and the resume lesson itself is always open.
+  if (!canEnterLesson(course.lessons, learnerId, lesson.id)) {
+    const resume = pickResumeLesson(course.lessons, learnerId);
+    if (resume) {
+      redirect(`/courses/${course.slug}/lessons/${resume.slug}`);
+    }
+    notFound();
+  }
+
   const detail = await getLessonWithMessages(lesson.id);
   if (!detail) notFound();
 
-  const learnerId = getCurrentLearnerId();
   const isComplete =
     detail.progress.find((p) => p.learnerId === learnerId)?.completed === true;
 

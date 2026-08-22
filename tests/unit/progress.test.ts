@@ -115,6 +115,64 @@ describe("canEnterLesson", () => {
   it("returns false for an unknown lesson id", () => {
     expect(canEnterLesson(lessons, learner, "nope")).toBe(false);
   });
+
+  it("always allows the first lesson — no predecessors to gate", () => {
+    expect(canEnterLesson(lessons, learner, "l1")).toBe(true);
+    // Even with no progress at all on lesson 1, the first lesson is open.
+    const noProgress = lessons.map((l) => ({ ...l, progress: [] }));
+    expect(canEnterLesson(noProgress, learner, "l1")).toBe(true);
+  });
+
+  it("blocks lesson 2 when only lesson 1 is started but not complete", () => {
+    const startedFirst = lessons.map((l, i) => ({
+      ...l,
+      progress: i === 0 ? [makeProgress(learner, l.id, false)] : [],
+    }));
+    expect(canEnterLesson(startedFirst, learner, "l2")).toBe(false);
+  });
+
+  it("blocks lesson 3 even if a later lesson is somehow complete (gap in completion)", () => {
+    // Defensive: if some progress row on lesson 3 is marked complete while
+    // lesson 1 is incomplete, the gating helper must still refuse entry —
+    // order is the source of truth, not progress.createdAt.
+    const gapped = lessons.map((l, i) => ({
+      ...l,
+      progress:
+        i === 2
+          ? [makeProgress(learner, l.id, true)]
+          : i === 0
+            ? [makeProgress(learner, l.id, false)]
+            : [],
+    }));
+    expect(canEnterLesson(gapped, learner, "l3")).toBe(false);
+  });
+
+  it("lets the learner review a past completed lesson even if a later one is incomplete", () => {
+    const partial = lessons.map((l, i) => ({
+      ...l,
+      progress: i < 1 ? [makeProgress(learner, l.id, true)] : [],
+    }));
+    expect(canEnterLesson(partial, learner, "l1")).toBe(true);
+  });
+
+  it("allows every lesson once the course is fully complete", () => {
+    const allDone = lessons.map((l) => ({
+      ...l,
+      progress: [makeProgress(learner, l.id, true)],
+    }));
+    expect(canEnterLesson(allDone, learner, "l1")).toBe(true);
+    expect(canEnterLesson(allDone, learner, "l2")).toBe(true);
+    expect(canEnterLesson(allDone, learner, "l3")).toBe(true);
+  });
+
+  it("ignores progress rows from other learners when gating", () => {
+    const otherLearner = lessons.map((l) => ({
+      ...l,
+      progress: [makeProgress("someone-else", l.id, true)],
+    }));
+    expect(canEnterLesson(otherLearner, learner, "l2")).toBe(false);
+    expect(canEnterLesson(otherLearner, learner, "l3")).toBe(false);
+  });
 });
 
 describe("isLessonComplete + summariseProgress", () => {
