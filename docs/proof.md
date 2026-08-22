@@ -315,73 +315,32 @@ existing four journeys.
 Substantive-change CI: [run 32589953857](https://github.com/aharonyaircohen/tdr/actions/runs/32589953857)
 passed `npm run verify` (71 verification tests) and 10 Playwright journeys.
 
-Previously, reopening a lesson the learner had already completed would
-re-seed it on every refresh, dropping the closing tutor reply and turning
-the transcript into a single fresh prompt. The fix lives in
-`src/lib/service.ts`: a completed lesson is no longer auto-seeded on
-read — only `Message` rows that already exist for that lesson are returned,
-in their original order. The POST messages handler also refuses further
-turns on a completed lesson and returns the existing transcript, so the
-closing tutor line and the learner's final reply stay intact across
-refreshes and across the message API.
+The defect was narrower than re-seeding: `sendTurn` returned the final tutor
+reply with a temporary `terminal-*` id but never inserted that reply into
+`Message`, so only the closing line disappeared after refresh. PR #16 persists
+that tutor reply normally. Once progress is complete, another message POST
+returns `409` and inserts nothing, keeping the stored transcript unchanged.
 
-### Behavior summary
-
-| Step | Behavior |
-|---|---|
-| Learner completes a lesson | Closing tutor reply is persisted as the last `Message` row. |
-| Learner refreshes / reopens the completed lesson | Transcript renders the same closing tutor reply; no re-seed, no duplicate rows, the lesson is read-only. |
-| Learner POSTs to `/api/lessons/:id/messages` on a completed lesson | Existing transcript is returned untouched; no new rows are written. |
-| Learner navigates to a not-yet-completed lesson | Unchanged — the seed prompt appears as before, the lesson can still be driven to completion. |
-
-### Coverage
-
-- `tests/integration/journey.test.ts` — 3 new integration tests using the
-  real SQLite DB and the real `sendTurn` service: the closing tutor reply
-  persists and re-renders verbatim on reopen, a refresh mid-lesson does
-  not duplicate the opening prompt, and a completed lesson rejects further
-  turns without rewriting the transcript.
-- `tests/e2e/learner-journey.spec.ts` — 1 new Playwright test under
-  "Learner can see a completed lesson's transcript on refresh": drive a
-  lesson to completion, hard reload, assert the closing tutor bubble and
-  the final learner bubble are still present and a second reload does not
-  produce a fresh opening line.
+Two SQLite integration regressions prove the final tutor row survives a reload
+exactly once and that a rejected post-completion request preserves every stored
+message. One Playwright regression completes a lesson, reloads the mounted page,
+and verifies the same tutor count and closing text with the composer disabled.
 
 ## 4d. Continue card follows the most-recent activity (issue #17 / PR #18)
 
 Substantive-change CI: [run 32590821527](https://github.com/aharonyaircohen/tdr/actions/runs/32590821527)
 passed `npm run verify` (73 verification tests) and 11 Playwright journeys.
 
-The home dashboard picks the **Continue learning** course via
-`pickRecentActiveCourse` in `src/lib/progress.ts`. Before this change,
-`Progress.updatedAt` only changed on lesson completion — a chat turn
-mid-lesson never refreshed the course's "last activity" stamp, so once a
-learner touched course B, returning to course A later did not bounce the
-Continue card back to A. The fix touches `sendTurn` in `src/lib/service.ts`:
-every successful chat turn now touches the active lesson's `Progress`
-row's `updatedAt` so the per-course activity ordering always reflects the
-most-recent thing the learner did, not the most-recent completion.
+The dashboard already selected **Continue learning** from
+`Progress.updatedAt`, but later turns in an existing unfinished lesson did not
+update that timestamp. PR #18 refreshes it inside the successful `sendTurn`
+transaction. Rejected input, locked lessons, and completed lessons do not gain
+activity.
 
-### Behavior summary
-
-| Sequence | Continue card |
-|---|---|
-| Start A → start B → return to A → make a turn | Points at A (most-recent activity). |
-| Start A → start B → make a turn in B | Stays on B (most-recent activity). |
-| Complete A → start B → make a turn in B | Points at B (A is complete and cannot replace an active one). |
-| Make turns in a single lesson | Continue card stays on that lesson's course; no flicker. |
-
-### Coverage
-
-- `tests/integration/journey.test.ts` — 3 new integration tests using the
-  real SQLite DB and the real `sendTurn` service: A → B → A activity flips
-  the Continue target back to A, completing A does not let A replace an
-  active B, and a mid-lesson turn is enough to refresh activity (no
-  completion required).
-- `tests/e2e/learner-journey.spec.ts` — 1 new Playwright test under
-  "Continue learning card follows the most-recent activity": drive A
-  partway, switch to B and drive B partway, switch back to A and make a
-  single turn, assert the Continue card on the home page points at A.
+Two SQLite integration regressions prove deterministic A → B → A selection and
+the three rejection boundaries. One Playwright regression performs the same
+course switching in the mounted app, waiting for each persisted tutor response,
+and verifies that Continue returns to A.
 
 ## 5. How to reproduce these screenshots locally
 
