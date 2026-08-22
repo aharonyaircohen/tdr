@@ -164,8 +164,8 @@ The CI workflow lives at `.github/workflows/ci.yml` and runs on every PR.
 It runs two jobs:
 
 1. **`verify`** — `npm ci` → typecheck → lint → all unit and integration
-   tests (32/32 on this branch: progress 11, script 10, composer 7,
-   integration 4).
+   tests (33/33 on this branch: progress 11, script 10, composer 7,
+   integration 5).
 2. **`e2e`** — `npm ci` → install Chromium → `npm run test:e2e`. Playwright
    starts the real dev server with database reset enabled, drives the complete
    3/3 learner journey, and uploads its report.
@@ -207,6 +207,7 @@ another checkout. Set `E2E_BASE_URL` to use an isolated port when needed.
 | Next.js 15+ route `params` are Promises | Updated `courses/[slug]`, `courses/[slug]/lessons/[lessonSlug]`, and all `/api/lessons/[lessonId]` route handlers to `await params`. |
 | Proof had no real screenshots | 7 real PNGs in `docs/screenshots/`, captured against the running app via `scripts/capture-proof.mts`. |
 | E2E stopped at 2/3 lessons | E2E drives lesson 3 to completion and asserts `3 / 3`. |
+| Concurrent first-visit requests could duplicate the opening tutor message | The seed route uses a deterministic message id with an atomic upsert; an integration regression sends two concurrent requests and proves exactly one message persists. |
 
 ## 8. Acceptance criteria map (issue #1 + #3)
 
