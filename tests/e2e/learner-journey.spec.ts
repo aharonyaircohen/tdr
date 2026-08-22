@@ -666,6 +666,9 @@ test.describe("Learner dashboard — multi-course", () => {
     ).toHaveCount(1, { timeout: 10_000 });
 
     // 4. Go home — Continue card must now point at B.
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
     await page.goto("/");
     await expect(page.getByTestId("continue-card")).toContainText(
       "Prompting patterns for engineers",
@@ -689,6 +692,9 @@ test.describe("Learner dashboard — multi-course", () => {
     ).toHaveCount(2, { timeout: 10_000 });
 
     // 6. Go home — Continue card must now point at A again.
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(3, { timeout: 10_000 });
     await page.goto("/");
     await expect(page.getByTestId("continue-card")).toContainText(
       "Intro to Large Language Models",
