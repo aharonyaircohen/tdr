@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #9: Let learners recover from an incorrect chat answer ([#10](https://github.com/aharonyaircohen/tdr/pull/10)) — @aharonyaircohen
 - #9: Let learners recover from an incorrect chat answer — wrong replies stay visible, the engine emits concise retry feedback that names the scripted learner prompt, and a later matching reply advances the lesson (refresh-safe)
 - #7: Preserve learner progress across normal app restarts ([#8](https://github.com/aharonyaircohen/tdr/pull/8)) — @aharonyaircohen
 - #7: Preserve learner progress across normal app restarts — non-destructive seed; `npm run db:reset` remains the only destructive path
