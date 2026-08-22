@@ -39,7 +39,11 @@ npm ci        # install (uses package-lock.json)
 npm run dev   # creates prisma/dev.db, seeds one course + 3 lessons, starts Next on :3000
 ```
 
-`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. **The seed is non-destructive: re-running `npm run setup` (or restarting `npm run dev`) preserves every `Message` and `Progress` row, so chat history and learner progress survive normal restarts.** The npm scripts inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`, so no `.env` file is required; override either by exporting the env vars in your shell before running `npm run dev`.
+`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `node scripts/backfill-learner-ownership.mjs` (legacy upgrade, no-op on fresh DBs), `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. **The seed is non-destructive: re-running `npm run setup` (or restarting `npm run dev`) preserves every `Message` row (and its `learnerId`) and every `Progress` row, so chat history and learner progress survive normal restarts.** The npm scripts inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`, so no `.env` file is required; override either by exporting the env vars in your shell before running `npm run dev`.
+
+### Legacy upgrade behavior
+
+On a pre-#21 database (where `Message` had no `learnerId` column), the setup script first runs `scripts/backfill-learner-ownership.mjs`, which issues `ALTER TABLE Message ADD COLUMN learnerId TEXT NOT NULL DEFAULT 'demo-learner'`. Every existing message row keeps its id and content verbatim and is owned by `demo-learner`. `prisma db push` then tightens the column to match the schema (`NOT NULL`, no default), so future silent writes that forget the owner fail closed rather than assigning any default.
 
 ### Reset the database (destructive)
 
@@ -95,14 +99,16 @@ More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Auth, user accounts, admin/course-author UI, real LLM integration, streaming, multimodal input, notifications, email, analytics, billing, mobile apps, i18n. These are tracked as future work.
 
-## Data ownership boundary (single-learner slice)
+## Data ownership boundary (learner-owned slice, pre-auth)
 
-This slice is intentionally single-learner, so the learner boundary is narrower than it looks:
+The runtime is multi-user-shaped but not multi-tenant: every `Message` and `Progress` row is owned by exactly one learner.
 
-- `CURRENT_LEARNER_ID` (default `demo-learner`) scopes **Progress only**.
-- Chat transcripts (`Message`) are **lesson-global**: every message has only `lessonId`, `role`, `content`, `createdAt`. The seed, read, and replay queries in `src/lib/service.ts` all key messages by `lessonId` — there is no `learnerId` on `Message` to filter by.
+- `CURRENT_LEARNER_ID` (default `demo-learner`) scopes **both Progress and Message**. It is a temporary identity source, **not login** — there is no password, no session, no per-request verification, and no account object. Anyone with shell access can set the env var and impersonate the named learner. Replacing it with a real login is a localized change in `src/lib/learner.ts`; every service-layer call already keys on `getCurrentLearnerId()`.
+- Every `Message` row carries a `learnerId`. `getLessonWithMessages`, `sendTurn`, the per-learner seed endpoint, and the dev reset endpoint all filter by the active learner. The composite index `(learnerId, lessonId, createdAt)` makes the per-learner transcript read a single indexed lookup.
+- The schema declares `learnerId` as required with no default, and the runtime passes it explicitly on every write — including the opening tutor line, the learner turn, the tutor reply, the retry feedback, and the closing line. Future writes that forget the owner fail closed rather than silently inheriting a default.
+- Pre-#21 demo history (where `Message` had no `learnerId` column) is preserved by `scripts/backfill-learner-ownership.mjs`, which adds the column with a one-shot `DEFAULT 'demo-learner'` and then `prisma db push` strips the default. Every legacy row keeps its id and content intact, owned by `demo-learner`.
 
-Multi-user accounts must **not** be added until `Message` gains learner ownership and every transcript query is scoped by learner. Adding accounts before that would let one learner read another learner's chat history on any shared lesson.
+`POST /api/dev/reset` (gated on `ALLOW_DEV_RESET=true`) wipes every message and progress row, then pre-seeds the opening tutor line for every lesson owned by the current learner only. `npm run db:reset` (which removes `prisma/dev.db` first) is the only path that wipes all learners' state at once.
 
 ## Dashboard, at a glance
 

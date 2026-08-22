@@ -1,6 +1,13 @@
 // Service layer: combines db + chat engine + progress logic.
 // This is the only place that writes to the DB from a request, which keeps
 // route handlers thin and the chat turn logic testable.
+//
+// Ownership invariant (issue #21): every `Message` row is owned by exactly
+// one learner. `getLessonWithMessages` filters by the current learner so
+// the UI never renders another learner's chat; `sendTurn` scopes every
+// read and write by `learnerId`, and the opening/replay/retry/closing
+// paths each pass `learnerId` explicitly on insert. Pre-#21 legacy rows
+// are owned by `demo-learner` via the upgrade backfill script.
 
 import { prisma } from "./db";
 import {
@@ -103,7 +110,10 @@ export async function getLessonWithMessages(lessonId: string) {
     where: { id: lessonId },
     include: {
       course: true,
-      messages: { orderBy: { createdAt: "asc" } },
+      messages: {
+        where: { learnerId: getCurrentLearnerId() },
+        orderBy: { createdAt: "asc" },
+      },
       progress: { where: { learnerId: getCurrentLearnerId() } },
     },
   });
@@ -180,35 +190,42 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
       );
     }
 
-    // Fetch existing messages for the engine.
+    // Fetch existing messages for the engine, scoped to THIS learner so
+    // another learner's transcript cannot leak into the script engine's
+    // replay — and so a fresh learner landing on a shared lesson never
+    // sees prior turns.
     const existing = await tx.message.findMany({
-      where: { lessonId },
+      where: { lessonId, learnerId },
       orderBy: { createdAt: "asc" },
     });
 
-    // If the lesson has no messages yet, ensure the opening tutor line is
-    // present before the learner turn. This keeps the engine happy whether
-    // or not the seed endpoint has fired.
+    // If this learner has no transcript yet on this lesson, ensure the
+    // opening tutor line is present before the learner turn. This keeps
+    // the engine happy whether or not the seed endpoint has fired.
     if (existing.length === 0) {
       const script = parseScript(lesson.script);
       const opening = selectTutorReply(script, []);
       await tx.message.create({
         data: {
           lessonId,
+          learnerId,
           role: "tutor",
           content: opening.content,
         },
       });
     }
 
-    // Persist learner turn.
+    // Persist learner turn — owned by the active learner.
     const learnerMessage = await tx.message.create({
-      data: { lessonId, role: "learner", content },
+      data: { lessonId, learnerId, role: "learner", content },
     });
 
-    // Fetch the full conversation for the engine.
+    // Fetch the full conversation for the engine. Scoping by learnerId
+    // here too — if a peer learner happened to have a row on the same
+    // lesson we must not feed it to the engine (or the engine would
+    // advance against someone else's history).
     const all = await tx.message.findMany({
-      where: { lessonId },
+      where: { lessonId, learnerId },
       orderBy: { createdAt: "asc" },
     });
     const convo: ConversationTurn[] = all.map((m) => ({
@@ -223,7 +240,7 @@ export async function sendTurn(input: SendTurnInput): Promise<SendTurnResult> {
     // `isComplete` is true. Persisting the final tutor row keeps the
     // transcript stable across refresh and direct API loads.
     const createdTutor = await tx.message.create({
-      data: { lessonId, role: "tutor", content: reply.content },
+      data: { lessonId, learnerId, role: "tutor", content: reply.content },
     });
 
     // Mark progress. If the engine says the lesson is complete and the

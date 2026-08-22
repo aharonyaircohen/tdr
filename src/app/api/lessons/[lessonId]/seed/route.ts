@@ -31,7 +31,12 @@ export async function POST(
   }
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { messages: { orderBy: { createdAt: "asc" } } },
+    include: {
+      messages: {
+        where: { learnerId },
+        orderBy: { createdAt: "asc" },
+      },
+    },
   });
   if (!lesson) {
     return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
@@ -43,15 +48,18 @@ export async function POST(
   }
   const script = parseScript(lesson.script);
   const reply = selectTutorReply(script, [] satisfies ConversationTurn[]);
-  const seedMessageId = `lesson-seed:${lesson.id}`;
-  // The deterministic id makes the first write atomic across Strict Mode,
-  // network retries, and multiple tabs.
+  // The deterministic id includes the learner so two learners visiting the
+  // same lesson concurrently each get their own opening row (and the
+  // upsert makes that first write atomic across Strict Mode, retries, and
+  // multiple tabs for the same learner).
+  const seedMessageId = `lesson-seed:${lesson.id}:${learnerId}`;
   const created = await prisma.message.upsert({
     where: { id: seedMessageId },
     update: {},
     create: {
       id: seedMessageId,
       lessonId: lesson.id,
+      learnerId,
       role: "tutor",
       content: reply.content,
     },
