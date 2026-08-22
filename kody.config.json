@@ -1,0 +1,9 @@
+{
+  "github": {
+    "owner": "aharonyaircohen",
+    "repo": "tdr"
+  },
+  "agent": {
+    "model": "openrouter/free"
+  }
+}
