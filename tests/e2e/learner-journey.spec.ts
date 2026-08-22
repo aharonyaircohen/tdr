@@ -463,3 +463,117 @@ test.describe("Learner dashboard — multi-course", () => {
     await fresh.close();
   });
 });
+
+test.describe("Learner can recover from an incorrect chat answer", () => {
+  test.beforeEach(async () => {
+    const ctx = await request.newContext({
+      baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    });
+    const res = await ctx.post("/api/dev/reset");
+    if (!res.ok()) {
+      throw new Error(`reset failed: ${res.status()} ${await res.text()}`);
+    }
+    await ctx.dispose();
+  });
+
+  test("wrong → retry feedback → refresh → matching answer advances the lesson", async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/");
+    await page.getByTestId("start-course-intro-to-llms").click();
+    await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
+    await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const transcript = page.getByTestId("chat-transcript");
+    const input = page.getByTestId("chat-input");
+    const send = page.getByTestId("chat-send");
+
+    // 1. Send a wrong learner answer.
+    await input.fill("watermelon");
+    await send.click();
+    await expect(transcript.locator("[data-testid=bubble-learner]")).toHaveCount(
+      1,
+      { timeout: 10_000 },
+    );
+    await expect(transcript.locator("[data-testid=bubble-tutor]")).toHaveCount(
+      2,
+      { timeout: 10_000 },
+    );
+
+    // The retry-feedback tutor bubble must include the scripted prompt so
+    // the learner knows what to try again.
+    const retryBubble = transcript.locator("[data-testid=bubble-tutor]").last();
+    await expect(retryBubble).toBeVisible();
+    await expect(retryBubble).toContainText("Try again");
+    await expect(retryBubble).toContainText(
+      "Learner indicates they are ready to continue",
+    );
+    // The wrong reply is still visible — not silently dropped.
+    await expect(
+      transcript.locator("[data-testid=bubble-learner]").first(),
+    ).toHaveText("watermelon");
+    // No lesson-complete banner — we are still on the same step.
+    await expect(page.getByTestId("lesson-complete")).toHaveCount(0);
+
+    // 2. Hard reload — simulates the learner closing/reopening the tab.
+    await page.reload();
+    const transcriptAfter = page.getByTestId("chat-transcript");
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-tutor]").first(),
+    ).toBeVisible({ timeout: 15_000 });
+    // The persisted transcript includes both the wrong turn and the retry
+    // feedback; the lesson is still on the same scripted step.
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(1);
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2);
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-learner]").first(),
+    ).toHaveText("watermelon");
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-tutor]").last(),
+    ).toContainText("Try again");
+    await expect(page.getByTestId("lesson-complete")).toHaveCount(0);
+
+    // 3. Send the matching retry — the lesson must advance normally.
+    const inputAfter = page.getByTestId("chat-input");
+    const sendAfter = page.getByTestId("chat-send");
+    await inputAfter.fill("next");
+    await sendAfter.click();
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(2, { timeout: 10_000 });
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(3, { timeout: 10_000 });
+    // The new tutor line is the scripted advance, not another retry nudge.
+    const advancedTutor = transcriptAfter
+      .locator("[data-testid=bubble-tutor]")
+      .last();
+    await expect(advancedTutor).toBeVisible();
+    await expect(advancedTutor).not.toContainText("Try again");
+
+    // 4. Drive the rest of the lesson to prove recovery leads to the same
+    // completion behavior as a clean walkthrough.
+    await inputAfter.fill("I've heard about LLMs on podcasts.");
+    await sendAfter.click();
+    await expect(
+      transcriptAfter.locator("[data-testid=bubble-learner]"),
+    ).toHaveCount(3, { timeout: 10_000 });
+
+    await inputAfter.fill("done");
+    await sendAfter.click();
+    await expect(page.getByTestId("lesson-complete")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("lesson-progress")).toContainText("1 / 3", {
+      timeout: 10_000,
+    });
+    await context.close();
+  });
+});

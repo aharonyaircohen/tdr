@@ -3,6 +3,7 @@ import {
   parseScript,
   selectTutorReply,
   matchesExpect,
+  retryFeedback,
   ScriptStep,
 } from "@/lib/script";
 
@@ -77,10 +78,101 @@ describe("selectTutorReply", () => {
       { role: "tutor", content: "Welcome!" },
       { role: "learner", content: "watermelon" },
     ]);
-    // We expect a tutor line because the engine replays position 0 then
-    // surfaces the next tutor step at index 2 (since the learner mismatch
-    // doesn't advance). It should not throw.
+    // The engine does not advance past the wrong answer; it returns concise
+    // retry feedback that names the scripted learner prompt.
     expect(typeof reply.content).toBe("string");
     expect(reply.isComplete).toBe(false);
+    expect(reply.content).toBe(retryFeedback("ready"));
+    expect(reply.content).toContain("ready");
+  });
+});
+
+describe("selectTutorReply — recovery from a wrong learner answer", () => {
+  const recoveryScript: ScriptStep[] = [
+    { kind: "tutor", content: "Hello." },
+    {
+      kind: "learner",
+      prompt: "Learner signals readiness.",
+      expect: ["next", "ready"],
+    },
+    { kind: "tutor", content: "Continuing." },
+    { kind: "learner", prompt: "Learner agrees.", expect: ["yes"] },
+    { kind: "tutor", content: "Done." },
+  ];
+
+  it("a wrong learner answer produces retry feedback that references the prompt", () => {
+    const reply = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "watermelon" },
+    ]);
+    expect(reply.isComplete).toBe(false);
+    expect(reply.content).toBe(
+      retryFeedback("Learner signals readiness."),
+    );
+    expect(reply.content).toContain("Learner signals readiness.");
+  });
+
+  it("a later matching learner answer advances the lesson, ignoring the prior wrong turn", () => {
+    const reply = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "watermelon" }, // wrong, persisted
+      { role: "tutor", content: retryFeedback("Learner signals readiness.") },
+      { role: "learner", content: "next" }, // correct retry
+    ]);
+    expect(reply.isComplete).toBe(false);
+    expect(reply.content).toBe("Continuing.");
+  });
+
+  it("several wrong answers in a row each surface retry feedback", () => {
+    const r1 = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "watermelon" },
+    ]);
+    const r2 = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "watermelon" },
+      { role: "tutor", content: r1.content },
+      { role: "learner", content: "potato" },
+    ]);
+    expect(r1.content).toBe(retryFeedback("Learner signals readiness."));
+    expect(r2.content).toBe(retryFeedback("Learner signals readiness."));
+  });
+
+  it("a wrong answer after partial progress still recovers and advances", () => {
+    // Conversation: opening tutor, correct first answer, second tutor, wrong
+    // second answer. Engine should re-prompt for the same second step.
+    const partial = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "next" },
+      { role: "tutor", content: "Continuing." },
+      { role: "learner", content: "watermelon" },
+    ]);
+    expect(partial.isComplete).toBe(false);
+    expect(partial.content).toBe(retryFeedback("Learner agrees."));
+
+    // Then a correct retry completes the lesson.
+    const complete = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+      { role: "learner", content: "next" },
+      { role: "tutor", content: "Continuing." },
+      { role: "learner", content: "watermelon" },
+      { role: "tutor", content: partial.content },
+      { role: "learner", content: "yes" },
+    ]);
+    expect(complete.isComplete).toBe(true);
+  });
+
+  it("natural waiting state (no wrong turns in transcript) still uses the existing nudge", () => {
+    const reply = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "Hello." },
+    ]);
+    expect(reply.isComplete).toBe(false);
+    expect(reply.content).toBe("I'm waiting for your reply.");
+  });
+
+  it("retryFeedback is deterministic and includes the prompt verbatim", () => {
+    expect(retryFeedback("Learner signals readiness.")).toBe(
+      "That doesn't match what I'm looking for. Try again — I'm asking: Learner signals readiness.",
+    );
   });
 });

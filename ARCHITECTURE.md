@@ -72,6 +72,14 @@ Output: `{ content: string, isComplete: boolean, nextStepIndex: number }`.
 
 The algorithm walks the script and the conversation in lockstep. If the conversation agrees with the script so far, it advances to the next step. If the next step is a tutor line and there are no more conversation turns to consume, the tutor line is emitted. If the script is exhausted, the lesson is marked complete.
 
+### Recovery from a wrong learner answer
+
+A wrong learner turn (one whose content does not match any `expect` keyword for the current learner step) is **persisted as a normal `Message` row** and remains visible in the transcript — it is not deleted, edited, or hidden. The engine treats it as "noise" during replay and skips past it (advancing the conversation index without advancing the script step). The same treatment applies to any unexpected tutor message (e.g. the retry feedback itself) that doesn't line up with the current scripted tutor step.
+
+After replay, if the engine is positioned at a learner step and at least one turn was skipped during replay, the reply is **concise retry feedback** that references the scripted learner prompt: `That doesn't match what I'm looking for. Try again — I'm asking: <prompt>.` (see `retryFeedback`). Otherwise the engine returns the natural waiting nudge (`I'm waiting for your reply.`).
+
+This is what lets a learner recover from a wrong answer: the wrong turn is visible, the retry feedback tells them what the tutor is asking for, and the next matching reply advances the lesson as if the wrong turn had never happened. The lesson can also be refreshed and resumed mid-recovery — the persisted transcript (including wrong turns and retry feedback) is loaded as-is and the engine's skip-noise replay handles it.
+
 The engine is deliberately small. It has no external dependencies, and is the only place where lesson-content rules live. Swapping in an LLM means replacing `selectTutorReply` with an LLM call that returns the same shape.
 
 ## Resume flow
