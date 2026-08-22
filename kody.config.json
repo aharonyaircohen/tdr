@@ -4,6 +4,6 @@
     "repo": "tdr"
   },
   "agent": {
-    "model": "openrouter/free"
+    "model": "minimax/MiniMax-M3"
   }
 }
