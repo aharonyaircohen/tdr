@@ -40,15 +40,21 @@ model Lesson {
 }
 
 // Tutor-vs-learner chat turn. role is either "tutor" or "learner".
+// Every message is owned by exactly one learner — the learner who was the
+// active `CURRENT_LEARNER_ID` when the turn was sent. Existing rows from a
+// pre-ownership schema are backfilled to `demo-learner` by the upgrade
+// script; there is intentionally no schema default, so every runtime write
+// must supply `learnerId` explicitly.
 model Message {
   id        String   @id @default(cuid())
   lessonId  String
+  learnerId String
   role      String   // "tutor" | "learner"
   content   String
   createdAt DateTime @default(now())
   lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
-  @@index([lessonId, createdAt])
+  @@index([learnerId, lessonId, createdAt])
 }
 
 // Progress: which lesson is the learner currently on, and is it completed.

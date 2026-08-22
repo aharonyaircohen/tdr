@@ -2,6 +2,13 @@
 // upsert on unique slugs — and intentionally non-destructive on learner
 // state. Re-running it on an existing database must NOT delete any
 // `Message` or `Progress` rows; the destructive reset path is `npm run db:reset`.
+//
+// Pre-#21 upgrade: scripts/backfill-learner-ownership.mjs runs before this
+// seed (chained in the `setup` npm script) so every legacy `Message` row
+// already has `learnerId = "demo-learner"` by the time this script touches
+// the DB. This seed never writes `Message` rows itself — openings are
+// created lazily by the per-learner seed endpoint — so it leaves the
+// `learnerId` field alone.
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -344,10 +351,13 @@ async function main() {
   }
 
   // Note: this seed is intentionally non-destructive. Re-running it on an
-  // existing database must preserve any `Message` rows and learner-owned
-  // `Progress` rows so a normal `npm run dev` restart does not lose
-  // learner state. Note: `Message` is lesson-global in this single-learner
-  // slice (no `learnerId`); "learner-owned" applies to `Progress` only.
+  // existing database must preserve any `Message` rows (and their owners)
+  // and learner-owned `Progress` rows so a normal `npm run dev` restart
+  // does not lose learner state. Each `Message` is owned by exactly one
+  // learner (the active `CURRENT_LEARNER_ID` at write time, or
+  // `demo-learner` for the pre-#21 legacy backfill). Openings are
+  // per-learner and are created lazily by the seed endpoint, not by this
+  // script, so a re-run never overwrites an existing transcript.
   // The intentional destructive path is `npm run db:reset`, which deletes
   // the SQLite file before re-pushing the schema and re-seeding.
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "setup": "node scripts/prepare-sqlite.mjs prisma/dev.db && prisma generate && DATABASE_URL=file:./dev.db prisma db push --skip-generate --accept-data-loss && DATABASE_URL=file:./dev.db tsx prisma/seed.ts",
+    "setup": "node scripts/prepare-sqlite.mjs prisma/dev.db && prisma generate && DATABASE_URL=file:./dev.db node scripts/backfill-learner-ownership.mjs && DATABASE_URL=file:./dev.db prisma db push --skip-generate --accept-data-loss && DATABASE_URL=file:./dev.db tsx prisma/seed.ts",
     "predev": "npm run setup",
     "dev": "DATABASE_URL=file:./dev.db CURRENT_LEARNER_ID=demo-learner next dev -p 3000",
     "build": "next build",

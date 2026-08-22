@@ -14,19 +14,19 @@ Four tables. See `prisma/schema.prisma`.
 
 ```
 Course (1) ──< Lesson (n)
-Lesson (n) ──< Message (n)        // chat turns
+Lesson (n) ──< Message (n)        // chat turns — every row owned by one learner
 Lesson (n) ──< Progress (n)       // learner × lesson
 ```
 
 - **Course**: `id`, `slug`, `title`, `description`, `createdAt`.
 - **Lesson**: `id`, `courseId`, `slug`, `title`, `order`, `script` (JSON-encoded `ScriptStep[]`), `createdAt`. Unique on `(courseId, slug)`.
-- **Message**: `id`, `lessonId`, `role` (`"tutor"` | `"learner"`), `content`, `createdAt`.
+- **Message**: `id`, `lessonId`, `learnerId`, `role` (`"tutor"` | `"learner"`), `content`, `createdAt`. Composite index on `(learnerId, lessonId, createdAt)` for the per-learner transcript read.
 - **Progress**: `id`, `learnerId`, `lessonId`, `completed`, `updatedAt`. Unique on `(learnerId, lessonId)`.
 
 ### Why these tables
 
 - `Course` and `Lesson` are the canonical LMS shape; ordering is on `Lesson.order` so courses don't need a join table.
-- `Message` is append-only chat history, ordered by `createdAt`. Index on `(lessonId, createdAt)` for the common "load the transcript for a lesson" query.
+- `Message` is append-only chat history, ordered by `createdAt`. Every row is owned by exactly one learner — the active `CURRENT_LEARNER_ID` at write time. The composite index `(learnerId, lessonId, createdAt)` is what `getLessonWithMessages` uses to load a per-learner transcript in one query.
 - `Progress` is intentionally one row per `(learner, lesson)` rather than a single per-course row. That makes "next unfinished lesson" (`pickResumeLesson`) trivial and keeps future multi-course progress cheap.
 
 ## Chat turn flow
@@ -44,18 +44,27 @@ route handler (`messages/route.ts`)
 service.sendTurn({ lessonId, learnerId, content })
        │
        │  prisma.$transaction:
-       │    1. INSERT Message (role: "learner")
-       │    2. SELECT all messages for lessonId ORDER BY createdAt
-       │    3. parseScript(lesson.script)
-       │    4. selectTutorReply(script, conversation) -> { content, isComplete, nextStepIndex }
-       │    5. INSERT Message (role: "tutor") with reply.content  (unless terminal)
-       │    6. UPSERT Progress (learnerId, lessonId) set completed = isComplete
+       │    1. SELECT existing progress for (learnerId, lessonId); reject if complete
+       │    2. SELECT existing messages WHERE lessonId AND learnerId ORDER BY createdAt
+       │    3. If empty, INSERT opening Message (role: "tutor") owned by learnerId
+       │    4. INSERT learner Message with learnerId
+       │    5. SELECT all messages for (lessonId, learnerId) ORDER BY createdAt
+       │    6. parseScript(lesson.script)
+       │    7. selectTutorReply(script, conversation) -> { content, isComplete, nextStepIndex }
+       │    8. INSERT tutor Message owned by learnerId (including the closing line)
+       │    9. UPSERT Progress (learnerId, lessonId) set completed = isComplete
        ▼
 returns { learnerMessage, tutorMessage, isComplete }
        │
        ▼
 client prepends learner bubble, appends tutor bubble, refreshes server view
 ```
+
+### Ownership invariant (issue #21)
+
+Every `Message` row carries a `learnerId`. The transcript read in `getLessonWithMessages` filters by that learner, the script engine in `sendTurn` replays only this learner's turns, and the opening/replay/retry/closing inserts each pass `learnerId` explicitly. There is no schema default on `learnerId` — the column is `NOT NULL` at the SQLite level and required at the Prisma level, so any future runtime write that forgets the owner fails closed rather than silently assigning a default.
+
+The pre-#21 schema had no `learnerId` column. `scripts/backfill-learner-ownership.mjs` runs as part of `npm run setup`, before `prisma db push`: if the column is missing it issues `ALTER TABLE Message ADD COLUMN learnerId TEXT NOT NULL DEFAULT 'demo-learner'`, and `db push` then strips the default to match the schema (NOT NULL, no default). Legacy demo history survives the upgrade with every id and content intact, owned by `demo-learner`.
 
 ### Why a transaction
 
@@ -206,6 +215,10 @@ tests/
 
 ## Out of scope
 
-- Auth — `CURRENT_LEARNER_ID` env var stands in for a real session, and it scopes `Progress` only. `Message` rows are **lesson-global** in this slice: the model has no `learnerId`, and every transcript query (seed, read in `getLessonWithMessages`, replay in `sendTurn`) keys by `lessonId`. Multi-user accounts must not be added until `Message` gains learner ownership and every transcript query is scoped by learner — otherwise one learner could read another's chat history on any shared lesson.
+- Auth — `CURRENT_LEARNER_ID` (env var) is a **temporary identity source, not login**. There is no password, no session, no per-request verification, and no user account. The slice scopes both `Progress` and `Message` by it so the runtime is multi-user-shaped, but it is not multi-tenant — anyone with shell access can set the env var and impersonate the named learner. Replacing this with a real login is the obvious next step; every service-layer call already keys on `getCurrentLearnerId()` so swapping in a session resolver is a localized change.
 - Multi-tenant, admin UI, course authoring, payments, analytics, notifications.
 - Streaming or real LLM. `selectTutorReply` is the seam.
+
+### Destructive reset behavior (issue #21)
+
+`POST /api/dev/reset` (gated on `ALLOW_DEV_RESET=true`) wipes every `Message` and `Progress` row, then pre-seeds the opening tutor line for every lesson owned by the **current** learner only. Each learner that visits a lesson after a reset gets their own opening row via the per-learner seed endpoint (`lesson-seed:<lessonId>:<learnerId>`). `npm run db:reset` (which `rm`s the SQLite file) is the only path that resets all learners' state.
