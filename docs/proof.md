@@ -1,6 +1,19 @@
 # Vertical slice proof
 
-This document captures the proof artifacts for issue #1 ("Vertical slice: chat-based LMS learner journey") on `aharonyaircohen/tdr`. All transcripts and screenshots below were captured against the real running app on 2026-08-22 against commit on the `1-vertical-slice-chat-based-lms-learner-journey` branch.
+This document captures the proof artifacts for the TDR learner journey on
+`aharonyaircohen/tdr`:
+
+- **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey
+  (the working foundation this PR builds on).
+- **Issue #3 / this PR** — Learner UI polish: removed the stray bullet before
+  the course card on the catalog, and replaced the oversized lesson textarea +
+  send button with a compact chat composer that grows naturally with content.
+  **This PR is UI polish on the existing working learner journey — NOT a new
+  application foundation.** No new stack, router, persistence, or APIs were
+  introduced; the journey, data model, and persistence are untouched.
+
+All transcripts and screenshots below were captured against the real running
+app against commits on this branch (the polish branch for issue #3).
 
 ## 1. One-command fresh setup
 
@@ -92,7 +105,45 @@ lesson.
 
 ![Course overview](screenshots/07-course-overview.png)
 
-## 4. How to reproduce these screenshots locally
+## 4. UI polish (issue #3)
+
+### Stray bullet removed from the catalog
+
+Root cause: `<ul class="course-list">` did not have `list-style: none`, so the
+default `::marker` rendered as a `•` before each `<li class="course-card">`.
+The sibling `<ul class="lesson-list">` already had the right reset. Fix: added
+`list-style: none; padding: 0; margin: 0;` to `.course-list` in
+`src/app/globals.css`. No markup change was needed.
+
+![Catalog desktop — no stray bullet](screenshots/08-catalog-fixed-desktop.png)
+
+![Catalog mobile (375px) — no stray bullet, no horizontal scroll](screenshots/09-catalog-fixed-mobile.png)
+
+### Compact chat composer with natural auto-grow
+
+The lesson footer was previously a tall textarea + a stretched send button
+that consumed most of the chat shell. It is now a single-line-by-default
+rounded composer with the send button attached on the right. The textarea
+grows up to ~200px and then scrolls internally. Enter sends, Shift+Enter
+inserts a newline, focus ring is preserved, the send button keeps an
+`aria-label="Send reply"` for screen readers.
+
+![Composer empty — compact single-line](screenshots/10-composer-empty.png)
+
+![Composer with a long reply — grown + focus ring + attached Send](screenshots/11-composer-long.png)
+
+### Mobile readability
+
+The mobile screenshot below shows the chat usable on a 375×720 viewport: the
+transcript scrolls independently, the composer sits at the bottom, and no
+horizontal page scroll is needed. The chat-shell grid was changed from
+`auto 1fr auto` to `minmax(0, 1fr) auto auto` so the transcript (the first
+grid child) takes the remaining vertical space and the form (the second child)
+stays compact at the bottom.
+
+![Lesson on a mobile viewport — composer + scrollable transcript](screenshots/12-lesson-mobile.png)
+
+## 5. How to reproduce these screenshots locally
 
 ```bash
 npm ci
@@ -100,24 +151,44 @@ npm run dev               # in one terminal
 # In another:
 E2E_BASE_URL=http://127.0.0.1:3000 \
   npx tsx scripts/capture-proof.mts
+E2E_BASE_URL=http://127.0.0.1:3000 \
+  npx tsx scripts/capture-polish-screenshots.mts
 ls docs/screenshots/
 ```
 
-## 5. CI run
+## 6. CI run
 
 The CI workflow lives at `.github/workflows/ci.yml` and runs on every PR.
 It runs two jobs:
 
 1. **`verify`** — `npm ci` → typecheck → lint → all unit and integration
-   tests (25/25).
+   tests (32/32 on this branch: progress 11, script 10, composer 7,
+   integration 4).
 2. **`e2e`** — `npm ci` → install Chromium → `npm run test:e2e`. Playwright
    starts the real dev server with database reset enabled, drives the complete
    3/3 learner journey, and uploads its report.
 
-[Passing CI run 32581571095](https://github.com/aharonyaircohen/tdr/actions/runs/32581571095)
-proves both jobs on the vertical-slice PR.
+The four e2e tests on this branch are:
 
-## 6. Audit fixes from the prior PR
+1. `open → chat → progress → resume after reload → 3/3 complete` — the original
+   vertical-slice journey.
+2. `catalog has no stray bullet before the course card` — asserts the list and
+   its first `<li>` compute to `list-style-type: none`, and that the list's
+   first non-comment child is an `<li>`.
+3. `lesson composer is compact initially and grows as text is typed` — asserts
+   the empty composer is in the 36–56px range, grows after typing two lines,
+   clamps at ≤220px for a 30-line reply (with `overflow-y: auto`), and
+   collapses back when cleared.
+4. `chat is usable on a mobile viewport with no horizontal page scroll` —
+   375×667 viewport, asserts `document.scrollWidth - clientWidth ≤ 1` and that
+   a long learner bubble does not extend past the viewport.
+
+The vertical-slice PR (#2) had a passing CI run:
+[Passing CI run 32581571095](https://github.com/aharonyaircohen/tdr/actions/runs/32581571095).
+This polish PR's CI run URL will be linked from the PR description once the
+wrapper pushes and opens the PR.
+
+## 7. Audit fixes from the prior PR
 
 | Issue found in prior PR | Fix |
 |---|---|
@@ -132,7 +203,7 @@ proves both jobs on the vertical-slice PR.
 | Proof had no real screenshots | 7 real PNGs in `docs/screenshots/`, captured against the running app via `scripts/capture-proof.mts`. |
 | E2E stopped at 2/3 lessons | E2E drives lesson 3 to completion and asserts `3 / 3`. |
 
-## 7. Acceptance criteria map
+## 8. Acceptance criteria map (issue #1 + #3)
 
 | Criterion | Where it's covered |
 |---|---|
@@ -141,7 +212,11 @@ proves both jobs on the vertical-slice PR.
 | Seed script creates ≥ 1 course, ≥ 3 lessons, idempotent | `prisma/seed.ts` (upsert by slug, deletes orphan messages) |
 | Learner can complete the full journey | `tests/e2e/learner-journey.spec.ts` + `docs/screenshots/` |
 | Unit tests for chat turn endpoint + progress/resume | `tests/unit/script.test.ts`, `tests/unit/progress.test.ts`, `tests/integration/journey.test.ts` |
+| Unit tests for the compact composer's auto-grow | `tests/unit/composer.test.ts` (7 tests: empty / short / multi-line / max / wrap / collapse / custom opts) |
 | E2E test drives full journey (all 3 lessons) | `tests/e2e/learner-journey.spec.ts` |
+| E2E covers the catalog stray-bullet fix | `tests/e2e/learner-journey.spec.ts` → "catalog has no stray bullet" |
+| E2E covers the compact composer's auto-grow | `tests/e2e/learner-journey.spec.ts` → "lesson composer is compact initially and grows" |
+| E2E covers mobile viewport usability | `tests/e2e/learner-journey.spec.ts` → "chat is usable on a mobile viewport" |
 | CI workflow runs lint + typecheck + unit + e2e, green on the PR | `.github/workflows/ci.yml` |
 | README + ARCHITECTURE explain data model + flows | `README.md`, `ARCHITECTURE.md` |
-| This proof doc with dev command, HTTP transcript, screenshots | `docs/proof.md`, `docs/proof-http-transcript.txt`, `docs/screenshots/` |
+| This proof doc with dev command, HTTP transcript, polish screenshots | `docs/proof.md`, `docs/proof-http-transcript.txt`, `docs/screenshots/` |
