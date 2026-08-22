@@ -171,7 +171,6 @@ async function main() {
   await prisma.message.deleteMany({ where: { lessonId: { in: lessonIds } } });
   await prisma.progress.deleteMany({ where: { lessonId: { in: lessonIds } } });
 
-  // eslint-disable-next-line no-console
   console.log(
     `Seeded course "${course.title}" with ${lessonSpecs.length} lessons.`,
   );
@@ -179,7 +178,6 @@ async function main() {
 
 main()
   .catch((err) => {
-    // eslint-disable-next-line no-console
     console.error(err);
     process.exit(1);
   })

@@ -17,5 +17,3 @@ playwright/.cache/
 .env.test.local
 .env
 tsconfig.tsbuildinfo
-docs/screenshots/
-docs/proof-http-transcript.txt.tmp

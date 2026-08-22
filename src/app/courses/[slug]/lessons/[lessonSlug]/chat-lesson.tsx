@@ -33,6 +33,23 @@ export function ChatLesson(props: Props) {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
 
+  const seedFirstTurn = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/lessons/${props.lessonId}/seed`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(`Failed to load lesson (${res.status})`);
+      const data = (await res.json()) as { message: Message };
+      setMessages([data.message]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load lesson");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Make sure the first tutor line always shows even if the server snapshot was
   // empty (e.g. seed was just run for the first time and the lesson has no
   // messages yet).
@@ -49,23 +66,6 @@ export function ChatLesson(props: Props) {
       behavior: "smooth",
     });
   }, [messages.length]);
-
-  async function seedFirstTurn() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/lessons/${props.lessonId}/seed`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error(`Failed to load lesson (${res.status})`);
-      const data = (await res.json()) as { message: Message };
-      setMessages([data.message]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load lesson");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function send(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 
 type Params = { slug: string; lessonSlug: string };
 
-export default async function LessonPage({ params }: { params: Params }) {
-  const course = await getCourseWithLessons(params.slug);
+export default async function LessonPage({ params }: { params: Promise<Params> }) {
+  const { slug, lessonSlug } = await params;
+  const course = await getCourseWithLessons(slug);
   if (!course) notFound();
-  const lesson = course.lessons.find((l) => l.slug === params.lessonSlug);
+  const lesson = course.lessons.find((l) => l.slug === lessonSlug);
   if (!lesson) notFound();
 
   const detail = await getLessonWithMessages(lesson.id);

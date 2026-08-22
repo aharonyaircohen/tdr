@@ -12,7 +12,7 @@ import { getCurrentLearnerId } from "@/lib/learner";
  */
 export async function POST(
   req: Request,
-  { params }: { params: { lessonId: string } },
+  { params }: { params: Promise<{ lessonId: string }> },
 ) {
   let body: unknown;
   try {
@@ -43,8 +43,9 @@ export async function POST(
   }
 
   try {
+    const { lessonId } = await params;
     const result = await sendTurn({
-      lessonId: params.lessonId,
+      lessonId,
       learnerId: getCurrentLearnerId(),
       content,
     });

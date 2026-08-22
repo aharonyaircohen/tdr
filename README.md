@@ -13,10 +13,11 @@ A chat-based learning management system. This repository is the **vertical slice
 
 | Concern | Choice | Why |
 |---|---|---|
-| Framework | **Next.js 14 (App Router) + TypeScript** | One framework covers server (API routes, server components) and client (React). Strongly typed end-to-end. Single `next dev` command for development and `next build`/`next start` for production. |
-| Persistence | **Prisma + SQLite** | Zero-setup file-based database, fully typed schema, perfect for the slice. SQLite + Prisma is trivial to swap for Postgres later by changing the datasource block and the connection string. |
+| Framework | **Next.js 16 (App Router) + TypeScript** | One framework covers server (API routes, server components) and client (React). Strongly typed end-to-end. Single `next dev` command for development and `next build`/`next start` for production. |
+| Persistence | **Prisma 5 + SQLite** | Zero-setup file-based database, fully typed schema, perfect for the slice. SQLite + Prisma is trivial to swap for Postgres later by changing the datasource block and the connection string. |
 | Chat turn engine | **Rule-based, pluggable** | A typed `ScriptStep[]` per lesson drives the tutor. No LLM dependency required, so the journey is reproducible. The engine is one module (`src/lib/script.ts`) and can be replaced with an LLM-driven engine without touching the route or service layer. |
-| Tests | **Vitest (unit + integration) + Playwright (e2e)** | Vitest is fast and matches the TS toolchain; Playwright drives the full journey in a real browser. |
+| Tests | **Vitest 3 (unit + integration) + Playwright (e2e)** | Vitest is fast and matches the TS toolchain; Playwright drives the full journey in a real browser. |
+| Lint | **ESLint 9 (flat config) + eslint-config-next 16** | ESLint 9 + Next 16's bundled config gives us a single `eslint .` invocation with no legacy `.eslintrc.json`. |
 | Styling | Plain CSS with a small global stylesheet | No design-system overhead for the slice. |
 
 ### Trade-offs considered
@@ -34,7 +35,7 @@ npm ci        # install (uses package-lock.json)
 npm run dev   # creates prisma/dev.db, seeds one course + 3 lessons, starts Next on :3000
 ```
 
-`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. The defaults are in the committed `.env` (`DATABASE_URL=file:./dev.db`, `CURRENT_LEARNER_ID=demo-learner`); override either by creating a `.env.local` (gitignored).
+`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. The npm scripts inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`, so no `.env` file is required; override either by exporting the env vars in your shell before running `npm run dev`.
 
 ### Reset the database
 

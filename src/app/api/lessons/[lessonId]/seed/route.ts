@@ -9,10 +9,11 @@ import { getCurrentLearnerId } from "@/lib/learner";
  */
 export async function POST(
   _req: Request,
-  { params }: { params: { lessonId: string } },
+  { params }: { params: Promise<{ lessonId: string }> },
 ) {
+  const { lessonId } = await params;
   const lesson = await prisma.lesson.findUnique({
-    where: { id: params.lessonId },
+    where: { id: lessonId },
     include: { messages: { orderBy: { createdAt: "asc" } } },
   });
   if (!lesson) {

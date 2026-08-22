@@ -7,8 +7,9 @@ export const dynamic = "force-dynamic";
 
 type Params = { slug: string };
 
-export default async function CoursePage({ params }: { params: Params }) {
-  const course = await getCourseWithLessons(params.slug);
+export default async function CoursePage({ params }: { params: Promise<Params> }) {
+  const { slug } = await params;
+  const course = await getCourseWithLessons(slug);
   if (!course) notFound();
 
   const learnerId = getCurrentLearnerId();

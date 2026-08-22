@@ -10,9 +10,10 @@ import { getCourseWithLessons } from "@/lib/service";
  */
 export async function GET(
   _req: Request,
-  { params }: { params: { slug: string } },
+  { params }: { params: Promise<{ slug: string }> },
 ) {
-  const course = await getCourseWithLessons(params.slug);
+  const { slug } = await params;
+  const course = await getCourseWithLessons(slug);
   if (!course) {
     return NextResponse.json({ error: "Course not found" }, { status: 404 });
   }

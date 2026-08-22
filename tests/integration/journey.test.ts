@@ -20,10 +20,19 @@ function freshDb() {
   }
   // Schema path is relative to the schema file, so "./test.db" inside the
   // .env.test maps to prisma/test.db.
-  execSync("npx prisma db push --skip-generate --accept-data-loss", {
-    stdio: "ignore",
-    env: { ...process.env, DATABASE_URL: "file:./test.db" },
-  });
+  try {
+    execSync("npx prisma db push --skip-generate --accept-data-loss", {
+      stdio: "pipe",
+      env: { ...process.env, DATABASE_URL: "file:./test.db" },
+    });
+  } catch (e) {
+    const err = e as { stdout?: Buffer; stderr?: Buffer; status?: number };
+    const out = (err.stdout?.toString() ?? "") + (err.stderr?.toString() ?? "");
+    throw new Error(
+      `prisma db push failed (exit ${err.status ?? "?"}):\n${out}\n` +
+        `DATABASE_URL=file:./test.db resolves to ${testDbPath}.`,
+    );
+  }
 }
 
 let prisma: PrismaClient;

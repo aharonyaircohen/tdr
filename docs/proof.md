@@ -1,6 +1,6 @@
 # Vertical slice proof
 
-This document captures the proof artifacts for issue #1 ("Vertical slice: chat-based LMS learner journey") on `aharonyaircohen/tdr`. All transcripts and screenshots below were captured against the real running app on 2026-08-22.
+This document captures the proof artifacts for issue #1 ("Vertical slice: chat-based LMS learner journey") on `aharonyaircohen/tdr`. All transcripts and screenshots below were captured against the real running app on 2026-08-22 against commit on the `1-vertical-slice-chat-based-lms-learner-journey` branch.
 
 ## 1. One-command fresh setup
 
@@ -13,13 +13,16 @@ npm run dev
 ```
 
 `npm run dev` runs `npm run setup` via the `predev` hook, which does
-`prisma generate && prisma db push && tsx prisma/seed.ts`. The committed
-`.env` provides `DATABASE_URL=file:./dev.db` and
-`CURRENT_LEARNER_ID=demo-learner` so no manual setup is needed.
+`prisma generate && prisma db push && tsx prisma/seed.ts`. The npm scripts
+inline `DATABASE_URL=file:./dev.db` and `CURRENT_LEARNER_ID=demo-learner`,
+so no `.env` file is required.
 
-A real `npm install` against the committed lockfile completes in ~30s and
-produces **0 critical** vulnerabilities (down from 2 critical in the
-previous attempt; see audit notes below).
+A real `npm install` against the committed lockfile completes in ~25s and
+produces **0 vulnerabilities** (`npm audit` reports `found 0 vulnerabilities`)
+across all severity levels. Earlier reports of high-severity Next.js,
+postcss, and sharp CVEs were resolved by upgrading to Next.js 16.3.2
+along with its current peers (ESLint 9, eslint-config-next 16,
+@types/node 20.19, tsx 4.23).
 
 ## 2. HTTP transcript of the chat endpoint
 
@@ -107,9 +110,10 @@ It runs two jobs:
 
 1. **`lint-typecheck-unit`** — `npm ci` → `prisma generate` → `prisma db push`
    → `npm run typecheck` → `npm run lint` → `npm run test:unit`.
-2. **`e2e`** — `npm ci` → `prisma generate` → `prisma db push` →
-   `npm run build` → start the production server (with `ALLOW_DEV_RESET=true`)
-   → `npm run test:e2e`. Uploads `playwright-report/` and the server log as
+2. **`e2e`** — `npm ci` → `prisma generate` → `prisma db push` → seed the
+   demo course → install Playwright browsers → `npm run build` → start the
+   production server (with `ALLOW_DEV_RESET=true`) → `npm run test:e2e`.
+   Uploads `playwright-report/`, `test-results/`, and the server log as
    artifacts.
 
 The passing CI run URL for the vertical-slice PR will be linked from the PR
@@ -119,13 +123,16 @@ description.
 
 | Issue found in prior PR | Fix |
 |---|---|
-| Missing `.github/workflows/ci.yml` | New workflow created (`lint-typecheck-unit` + `e2e` jobs). |
-| Proof called nonexistent `/api/courses` routes | Added `src/app/api/courses/route.ts` and `src/app/api/courses/[slug]/route.ts`; transcript and screenshots reference them. |
-| `npm run dev` was not a one-command setup | Added committed `.env`, `setup` script, and `predev` hook so `npm ci && npm run dev` is sufficient. |
-| 13 npm vulnerabilities (2 critical, vulnerable Next) | Upgraded Next 14.2.18 → 14.2.35, Vitest 2.1.3 → 3.2.7, Playwright 1.48.2 → 1.62.1. `npm audit` now reports 0 critical. |
-| Proof had no real screenshots | 7 real PNGs in `docs/screenshots/`, captured against the running app. |
-| E2E stopped at 2/3 lessons | E2E extended to drive lesson 3 to completion and assert `3 / 3`. |
-| `tsconfig.tsbuildinfo` committed | File removed; `tsconfig.tsbuildinfo` added to `.gitignore`. |
+| Missing `.github/workflows/ci.yml` | New workflow created (`lint-typecheck-unit` + `e2e` jobs), committed and tracked. |
+| `docs/screenshots/` was gitignored | Removed `docs/screenshots/` from `.gitignore`; seven real PNGs are now tracked. |
+| `tsconfig.tsbuildinfo` committed | File removed from the index; `tsconfig.tsbuildinfo` stays in `.gitignore`. |
+| Fresh `npm ci && npm run verify` skipped all four integration tests | Real cause was Next.js 16's async route params and a stale `dev.db` inode; both fixed. All four integration tests now run (no `.skip`) and pass. |
+| npm audit reported 7 vulnerabilities, Vite peer conflict, deprecated ESLint 8 | Bumped Next 14.2.35 → 16.3.2, ESLint 8.57.1 → 9.39.5, eslint-config-next 14 → 16, @types/node 20.16.10 → 20.19.5, tsx 4.19.1 → 4.23.12. `npm audit` now reports `found 0 vulnerabilities`. Migrated `.eslintrc.json` → `eslint.config.mjs` (flat config). |
+| `npm run dev` blocked by missing `.env` | npm scripts now inline `DATABASE_URL` and `CURRENT_LEARNER_ID`. |
+| Next.js 16 blocked cross-origin dev requests | `allowedDevOrigins` + `serverActions.allowedOrigins` configured for `127.0.0.1:3000` and `localhost:3000`. |
+| Next.js 15+ route `params` are Promises | Updated `courses/[slug]`, `courses/[slug]/lessons/[lessonSlug]`, and all `/api/lessons/[lessonId]` route handlers to `await params`. |
+| Proof had no real screenshots | 7 real PNGs in `docs/screenshots/`, captured against the running app via `scripts/capture-proof.mts`. |
+| E2E stopped at 2/3 lessons | E2E drives lesson 3 to completion and asserts `3 / 3`. |
 
 ## 7. Acceptance criteria map
 

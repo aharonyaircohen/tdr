@@ -4,10 +4,11 @@ import { getCurrentLearnerId } from "@/lib/learner";
 
 export async function POST(
   _req: Request,
-  { params }: { params: { lessonId: string } },
+  { params }: { params: Promise<{ lessonId: string }> },
 ) {
   try {
-    await markLessonComplete(params.lessonId, getCurrentLearnerId());
+    const { lessonId } = await params;
+    await markLessonComplete(lessonId, getCurrentLearnerId());
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (e instanceof NotFoundError) {

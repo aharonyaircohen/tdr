@@ -1,4 +1,4 @@
-## HTTP transcript (captured 2026-08-22T14:37:46Z against http://127.0.0.1:3000)
+## HTTP transcript (captured 2026-08-22T15:09:05Z against http://127.0.0.1:3000)
 
 Lesson: "What is an LLM?" (slug: what-is-llm). Lesson id resolved from
 GET /api/courses/intro-to-llms.
@@ -6,87 +6,87 @@ GET /api/courses/intro-to-llms.
 ### 0. Discover the lesson id
 
     $ LESSON_ID=$(curl -s http://127.0.0.1:3000/api/courses/intro-to-llms \
-      | python3 -c "import json,sys; d=json.load(sys.stdin); print([l['id'] for l in d['lessons'] if l['slug']=='what-is-llm'][0])")
+      | python3 -c "import json,sys; d=json.load(sys.stdin); print([l[\"id\"] for l in d[\"lessons\"] if l[\"slug\"]==\"what-is-llm\"][0])")
     $ echo $LESSON_ID
-    cmt4hdmwy0002gnjtlu83yqaf
+    cmt4ijngu00024x34423abjlt
 
 ### 1. Seed the first tutor turn
 
-    POST /api/lessons/cmt4hdmwy0002gnjtlu83yqaf/seed
+    POST /api/lessons/cmt4ijngu00024x34423abjlt/seed
     -> 200 OK
-    {
-        "message": {
-            "id": "cmt4hfk5j00271dap92w68l1p",
-            "lessonId": "cmt4hdmwy0002gnjtlu83yqaf",
-            "role": "tutor",
-            "content": "Welcome! In this lesson we will explore what a large language model actually is. Think of it as a very advanced text predictor \u2014 given some text, it predicts what comes next. Reply with 'next' when you are ready to continue.",
-            "createdAt": "2026-08-22T14:37:21.991Z"
-        }
+{
+    "message": {
+        "id": "cmt4ikc1n0031ihzdofnexr2g",
+        "lessonId": "cmt4ijngu00024x34423abjlt",
+        "role": "tutor",
+        "content": "Welcome! In this lesson we will explore what a large language model actually is. Think of it as a very advanced text predictor \u2014 given some text, it predicts what comes next. Reply with 'next' when you are ready to continue.",
+        "createdAt": "2026-08-22T15:09:04.380Z"
     }
+}
 
-### 2. Turn 1 — learner says "next"
+### 2. Turn 1 - learner says "next"
 
-    POST /api/lessons/cmt4hdmwy0002gnjtlu83yqaf/messages
+    POST /api/lessons/cmt4ijngu00024x34423abjlt/messages
     {"content":"next"}
     -> 200 OK
-    {
-        "tutorMessage": {
-            "id": "terminal-1787409466392",
-            "role": "tutor",
-            "content": "Lesson complete. Move on to the next lesson when you're ready.",
-            "createdAt": "2026-08-22T14:37:46.392Z"
-        },
-        "learnerMessage": {
-            "id": "cmt4hg2z4003n1dap41mnu8t6",
-            "role": "learner",
-            "content": "next",
-            "createdAt": "2026-08-22T14:37:46.384Z"
-        },
-        "isComplete": true
-    }
+{
+    "tutorMessage": {
+        "id": "cmt4ikdap003aihzdto0uqs8m",
+        "role": "tutor",
+        "content": "Great. An LLM is trained on huge amounts of text from the internet, books, and code. It learns patterns \u2014 grammar, facts, reasoning styles \u2014 by predicting the next word in millions of sentences. Tell me one thing you already knew about LLMs, in any words you like.",
+        "createdAt": "2026-08-22T15:09:06.002Z"
+    },
+    "learnerMessage": {
+        "id": "cmt4ikdao0038ihzdzoxauz8u",
+        "role": "learner",
+        "content": "next",
+        "createdAt": "2026-08-22T15:09:06.001Z"
+    },
+    "isComplete": false
+}
 
-### 3. Turn 2 — learner shares something
+### 3. Turn 2 - learner shares something
 
-    POST /api/lessons/cmt4hdmwy0002gnjtlu83yqaf/messages
+    POST /api/lessons/cmt4ijngu00024x34423abjlt/messages
     {"content":"I have heard about LLMs on podcasts."}
     -> 200 OK
-    {
-        "tutorMessage": {
-            "id": "terminal-1787409466497",
-            "role": "tutor",
-            "content": "Lesson complete. Move on to the next lesson when you're ready.",
-            "createdAt": "2026-08-22T14:37:46.497Z"
-        },
-        "learnerMessage": {
-            "id": "cmt4hg328003q1dap937cfw5t",
-            "role": "learner",
-            "content": "I have heard about LLMs on podcasts.",
-            "createdAt": "2026-08-22T14:37:46.496Z"
-        },
-        "isComplete": true
-    }
+{
+    "tutorMessage": {
+        "id": "cmt4ikdc3003hihzdk3br2dl0",
+        "role": "tutor",
+        "content": "Nice \u2014 that is a solid intuition. LLMs do not 'think' the way humans do; they are extremely good pattern matchers. Type 'done' to mark this lesson complete and move to the next one.",
+        "createdAt": "2026-08-22T15:09:06.051Z"
+    },
+    "learnerMessage": {
+        "id": "cmt4ikdc2003fihzd37fo3n43",
+        "role": "learner",
+        "content": "I have heard about LLMs on podcasts.",
+        "createdAt": "2026-08-22T15:09:06.050Z"
+    },
+    "isComplete": false
+}
 
-### 4. Turn 3 — learner completes the lesson
+### 4. Turn 3 - learner completes the lesson
 
-    POST /api/lessons/cmt4hdmwy0002gnjtlu83yqaf/messages
+    POST /api/lessons/cmt4ijngu00024x34423abjlt/messages
     {"content":"done"}
     -> 200 OK
-    {
-        "tutorMessage": {
-            "id": "terminal-1787409466549",
-            "role": "tutor",
-            "content": "Lesson complete. Move on to the next lesson when you're ready.",
-            "createdAt": "2026-08-22T14:37:46.549Z"
-        },
-        "learnerMessage": {
-            "id": "cmt4hg33o003t1dapa5e0r89c",
-            "role": "learner",
-            "content": "done",
-            "createdAt": "2026-08-22T14:37:46.548Z"
-        },
-        "isComplete": true
-    }
+{
+    "tutorMessage": {
+        "id": "terminal-1787411346095",
+        "role": "tutor",
+        "content": "Lesson complete. Move on to the next lesson when you're ready.",
+        "createdAt": "2026-08-22T15:09:06.095Z"
+    },
+    "learnerMessage": {
+        "id": "cmt4ikdda003kihzd70a3gdps",
+        "role": "learner",
+        "content": "done",
+        "createdAt": "2026-08-22T15:09:06.095Z"
+    },
+    "isComplete": true
+}
 
-A Progress row exists with (learnerId=demo-learner, lessonId=cmt4hdmwy0002gnjtlu83yqaf,
+A Progress row exists with (learnerId=demo-learner, lessonId=cmt4ijngu00024x34423abjlt,
 completed=true). On the next visit, GET /api/courses returns
 resumeLessonSlug=tokens-and-context.
