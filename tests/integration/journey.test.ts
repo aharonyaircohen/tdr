@@ -692,6 +692,74 @@ describe("multi-course dashboard helpers", () => {
     });
   }
 
+  // Issue #17 needs lessons that stay in-progress after a single successful
+  // learner turn — that's the precondition for the buggy code path (an
+  // existing progress row that is not complete). The default `seedTwoCourses`
+  // scripts terminate after one matching turn, so we use a longer script here.
+  async function seedTwoCoursesInProgress() {
+    const courseA = await prisma.course.create({
+      data: { slug: "course-a", title: "Course A", description: "A" },
+    });
+    const courseB = await prisma.course.create({
+      data: { slug: "course-b", title: "Course B", description: "B" },
+    });
+    // Script walks tutor → learner → tutor → learner → tutor → learner →
+    // tutor. Three matching turns are needed to reach the last tutor line —
+    // the lesson stays in-progress after each one so the activity-tracking
+    // regression can exercise the "existing progress row, not complete"
+    // branch on multiple consecutive turns.
+    const longScript = JSON.stringify([
+      { kind: "tutor", content: "Long intro" },
+      { kind: "learner", prompt: "ready", expect: ["yes", "ok"] },
+      { kind: "tutor", content: "Long middle" },
+      { kind: "learner", prompt: "go", expect: ["go", "next"] },
+      { kind: "tutor", content: "Long middle 2" },
+      { kind: "learner", prompt: "more", expect: ["more", "continue"] },
+      { kind: "tutor", content: "Long done" },
+    ]);
+    const lessonsA = await Promise.all([
+      prisma.lesson.create({
+        data: {
+          courseId: courseA.id,
+          slug: "a1",
+          title: "A1",
+          order: 1,
+          script: longScript,
+        },
+      }),
+      prisma.lesson.create({
+        data: {
+          courseId: courseA.id,
+          slug: "a2",
+          title: "A2",
+          order: 2,
+          script: longScript,
+        },
+      }),
+    ]);
+    const lessonsB = await Promise.all([
+      prisma.lesson.create({
+        data: {
+          courseId: courseB.id,
+          slug: "b1",
+          title: "B1",
+          order: 1,
+          script: longScript,
+        },
+      }),
+      prisma.lesson.create({
+        data: {
+          courseId: courseB.id,
+          slug: "b2",
+          title: "B2",
+          order: 2,
+          script: longScript,
+        },
+      }),
+    ]);
+    return { courseA, courseB, lessonsA, lessonsB };
+  }
+
   it("reports independent per-course state with no shared progress", async () => {
     await seedTwoCourses();
     process.env.CURRENT_LEARNER_ID = "iso-learner";
@@ -789,6 +857,160 @@ describe("multi-course dashboard helpers", () => {
     process.env.CURRENT_LEARNER_ID = "other-learner";
     const c = await listCourses();
     expect(c.every((course) => course.state === "not-started")).toBe(true);
+  });
+
+  it("refreshes course A's activity on every successful turn so Continue follows the most recent course", async () => {
+    // Issue #17 reproduction: A activity, B activity, then another valid A
+    // turn in an unfinished lesson. Continue must point at A after the
+    // final turn — pickRecentActiveCourse and listCourses must agree.
+    const { lessonsA, lessonsB } = await seedTwoCoursesInProgress();
+    const learner = "activity-learner";
+    process.env.CURRENT_LEARNER_ID = learner;
+
+    const lessonA1 = lessonsA[0].id;
+    const lessonB1 = lessonsB[0].id;
+
+    // 1. Course A — first valid turn. The fixture's longer script leaves
+    // the lesson in-progress (existing progress row, completed: false).
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "yes" });
+    let progressA = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(progressA.completed).toBe(false);
+
+    // 2. Course B — first valid turn.
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "yes" });
+    progressA = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    let progressB = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(progressB.completed).toBe(false);
+    expect(progressB.updatedAt.getTime()).toBeGreaterThan(
+      progressA.updatedAt.getTime(),
+    );
+
+    // Continue must now point at B (most recent activity).
+    let courses = await loadCoursesWithLessons(learner);
+    expect(pickRecentActiveCourse(courses, learner)?.slug).toBe("course-b");
+    let summaries = await listCourses();
+    const summaryA = summaries.find((c) => c.slug === "course-a")!;
+    const summaryB = summaries.find((c) => c.slug === "course-b")!;
+    expect(summaryA.lastActivityAt).not.toBeNull();
+    expect(summaryB.lastActivityAt).not.toBeNull();
+    expect(summaryB.lastActivityAt! > summaryA.lastActivityAt!).toBe(true);
+
+    // 3. Rewind A's updatedAt so we can prove the next valid turn on A
+    // advances it deterministically — no sleeps, no timing assumptions.
+    const rewindTime = new Date(progressA.updatedAt.getTime() - 60_000);
+    await prisma.progress.update({
+      where: { id: progressA.id },
+      data: { updatedAt: rewindTime },
+    });
+
+    // 4. Another valid turn on course A — still in an unfinished lesson.
+    // This is the turn the buggy code used to ignore for activity tracking:
+    // existing progress row, !isComplete, no DB write.
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "go" });
+    const progressAAfter = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(progressAAfter.completed).toBe(false);
+    // The activity timestamp on A must have advanced past the rewind.
+    expect(progressAAfter.updatedAt.getTime()).toBeGreaterThan(
+      rewindTime.getTime(),
+    );
+    // And it must now be the most recent of the two courses.
+    const progressBAfter = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(progressAAfter.updatedAt.getTime()).toBeGreaterThan(
+      progressBAfter.updatedAt.getTime(),
+    );
+
+    // 5. Continue must now point at A — both the pure helper and the
+    // dashboard aggregator agree.
+    courses = await loadCoursesWithLessons(learner);
+    expect(pickRecentActiveCourse(courses, learner)?.slug).toBe("course-a");
+    summaries = await listCourses();
+    const summaryAAfter = summaries.find((c) => c.slug === "course-a")!;
+    const summaryBAfter = summaries.find((c) => c.slug === "course-b")!;
+    expect(summaryAAfter.lastActivityAt! > summaryBAfter.lastActivityAt!).toBe(
+      true,
+    );
+
+    // The continue card in the dashboard mirrors the helper via
+    // getLearnerDashboard — exercise that path so the regression covers
+    // the wired-up contract the page.tsx relies on.
+    const { getLearnerDashboard } = await import("@/lib/service");
+    const dashboard = await getLearnerDashboard();
+    expect(dashboard.continueCourseId).toBe(
+      courses.find((c) => c.slug === "course-a")!.id,
+    );
+  });
+
+  it("rejected turns do not touch activity (locked lesson, already-complete lesson, bad input)", async () => {
+    const { lessonsA, lessonsB } = await seedTwoCoursesInProgress();
+    const learner = "reject-learner";
+    process.env.CURRENT_LEARNER_ID = learner;
+
+    const lessonA1 = lessonsA[0].id;
+    const lessonB1 = lessonsB[0].id;
+
+    // Baseline: a single turn on A to anchor an in-progress Progress row.
+    await sendTurn({ lessonId: lessonA1, learnerId: learner, content: "yes" });
+    const before = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(before.completed).toBe(false);
+
+    // Drive B all the way to completion (three learner turns on the long
+    // script — the third matching turn finishes the lesson).
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "yes" });
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "go" });
+    await sendTurn({ lessonId: lessonB1, learnerId: learner, content: "more" });
+    const completedB = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonB1 } },
+    });
+    expect(completedB.completed).toBe(true);
+
+    // Locked lesson: A2 is gated behind A1 (which is not yet complete).
+    // requireEnterableLesson must reject without mutating state.
+    const lessonA2 = lessonsA[1].id;
+    await expect(
+      sendTurn({ lessonId: lessonA2, learnerId: learner, content: "yes" }),
+    ).rejects.toThrow();
+
+    // Already-complete lesson: B1's progress row has completed=true, so
+    // any further turn on B1 is rejected by LessonCompleteError.
+    await expect(
+      sendTurn({ lessonId: lessonB1, learnerId: learner, content: "go" }),
+    ).rejects.toThrow();
+
+    // Bad input: route handler rejects before sendTurn runs, so this is
+    // an out-of-band guard. We assert by checking the API path stays at
+    // 400 and never touches activity.
+    const messageRoute = await import(
+      "@/app/api/lessons/[lessonId]/messages/route"
+    );
+    const context = { params: Promise.resolve({ lessonId: lessonA1 }) };
+    const badInput = await messageRoute.POST(
+      new Request("http://localhost/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: "" }),
+      }),
+      context,
+    );
+    expect(badInput.status).toBe(400);
+
+    // After every rejection above, A1's progress row is unchanged.
+    const after = await prisma.progress.findUniqueOrThrow({
+      where: { learnerId_lessonId: { learnerId: learner, lessonId: lessonA1 } },
+    });
+    expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+    expect(after.completed).toBe(false);
   });
 });
 
