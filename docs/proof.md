@@ -1,10 +1,12 @@
 # Vertical slice proof
 
-This document captures the proof artifacts for the TDR learner journey on
-`aharonyaircohen/tdr`:
+This document captures the cumulative proof artifacts for the TDR learner
+journey on `aharonyaircohen/tdr`. Each merged issue is listed below in
+chronological order together with the PR that landed it; every later section
+in this doc builds on the earlier ones.
 
-- **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey
-  (the working foundation this PR builds on).
+- **Issue #1 / PR #2** — Vertical slice: chat-based LMS learner journey.
+  The original foundation the later issues extend.
 - **Issue #3 / PR #4** — Learner UI polish: removed the stray bullet before
   the course card on the catalog, and replaced the oversized lesson textarea +
   send button with a compact chat composer that grows naturally with content.
@@ -17,13 +19,13 @@ This document captures the proof artifacts for the TDR learner journey on
   `npm run db:reset` remains the only destructive reset path; Playwright
   uses the dev-only `POST /api/dev/reset` endpoint (gated on
   `ALLOW_DEV_RESET=true`) for an isolated, clean state during e2e runs.
-- **Issue #9 / this PR** — Recover from an incorrect chat answer:
+- **Issue #9 / PR #10** — Recover from an incorrect chat answer:
   the rule-based chat engine now lets a learner who types a wrong reply
   retry and advance the lesson. The wrong turn stays visible in the
   transcript, the engine surfaces concise retry feedback that names the
   scripted learner prompt, and refreshing the page preserves the ability
   to retry. Existing correct journeys are unchanged.
-- **Issue #11 / this PR** — Enforce the existing sequential lesson path:
+- **Issue #11 / PR #12** — Enforce the existing sequential lesson path:
   `canEnterLesson` is now the single policy owner for forward navigation.
   The course overview renders future lessons as `Locked` (no link, brief
   explanation) instead of `Up next`, a direct URL to a locked future
@@ -32,6 +34,16 @@ This document captures the proof artifacts for the TDR learner journey on
   lesson is complete. The seed, message, and completion APIs enforce the
   same rule and return `409` for locked mutations. Past completed lessons
   remain reviewable.
+- **Issue #15 / PR #16** — Keep completed lesson transcripts stable after
+  refresh: when a learner reopens a lesson they have already completed, the
+  transcript renders as it was at completion (including the final closing
+  tutor reply), the lesson is treated as read-only, and a refresh does not
+  re-seed or duplicate any rows.
+- **Issue #17 / PR #18** — Refresh course activity on every successful chat
+  turn: the home dashboard's **Continue learning** card always reflects the
+  most-recent unfinished course the learner touched. Touching course A,
+  then B, then A again correctly returns the Continue card to A — no stale
+  ordering from before the most-recent activity.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.
@@ -297,6 +309,38 @@ retry message may display them; matching keywords remain internal.
 All 57 unit/integration tests pass (was 49 before this change); the new
 e2e test extends the existing Playwright suite without touching the
 existing four journeys.
+
+## 4c. Stable completed lesson transcripts (issue #15 / PR #16)
+
+Substantive-change CI: [run 32589953857](https://github.com/aharonyaircohen/tdr/actions/runs/32589953857)
+passed `npm run verify` (71 verification tests) and 10 Playwright journeys.
+
+The defect was narrower than re-seeding: `sendTurn` returned the final tutor
+reply with a temporary `terminal-*` id but never inserted that reply into
+`Message`, so only the closing line disappeared after refresh. PR #16 persists
+that tutor reply normally. Once progress is complete, another message POST
+returns `409` and inserts nothing, keeping the stored transcript unchanged.
+
+Two SQLite integration regressions prove the final tutor row survives a reload
+exactly once and that a rejected post-completion request preserves every stored
+message. One Playwright regression completes a lesson, reloads the mounted page,
+and verifies the same tutor count and closing text with the composer disabled.
+
+## 4d. Continue card follows the most-recent activity (issue #17 / PR #18)
+
+Substantive-change CI: [run 32590821527](https://github.com/aharonyaircohen/tdr/actions/runs/32590821527)
+passed `npm run verify` (73 verification tests) and 11 Playwright journeys.
+
+The dashboard already selected **Continue learning** from
+`Progress.updatedAt`, but later turns in an existing unfinished lesson did not
+update that timestamp. PR #18 refreshes it inside the successful `sendTurn`
+transaction. Rejected input, locked lessons, and completed lessons do not gain
+activity.
+
+Two SQLite integration regressions prove deterministic A → B → A selection and
+the three rejection boundaries. One Playwright regression performs the same
+course switching in the mounted app, waiting for each persisted tutor response,
+and verifies that Continue returns to A.
 
 ## 5. How to reproduce these screenshots locally
 
