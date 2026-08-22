@@ -188,7 +188,7 @@ The four e2e tests on this branch are:
 The vertical-slice PR (#2) had a passing CI run:
 [Passing CI run 32581571095](https://github.com/aharonyaircohen/tdr/actions/runs/32581571095).
 This polish PR passed both jobs in
-[CI run 32583104065](https://github.com/aharonyaircohen/tdr/actions/runs/32583104065).
+[CI run 32583438672](https://github.com/aharonyaircohen/tdr/actions/runs/32583438672).
 Playwright owns the dev server and never reuses an arbitrary process already
 listening on the configured port, so a local result cannot silently come from
 another checkout. Set `E2E_BASE_URL` to use an isolated port when needed.
