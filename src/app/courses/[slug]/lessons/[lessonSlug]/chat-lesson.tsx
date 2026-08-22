@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { computeComposerHeight } from "@/lib/composer";
 
 type Message = {
   id: string;
@@ -31,7 +32,33 @@ export function ChatLesson(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(props.isComplete);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const router = useRouter();
+
+  // Keep the composer in sync with its actual rendered content width so soft
+  // wrapping grows correctly on both desktop and mobile.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const composerMetrics = computeComposerHeight(el.scrollHeight);
+    el.style.height = `${composerMetrics.heightPx}px`;
+    el.style.overflowY = composerMetrics.scrollable ? "auto" : "hidden";
+  }, [input]);
+
+  const onComposerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        const form = e.currentTarget.form;
+        if (form) {
+          // Programmatic submit fires onSubmit which calls send().
+          form.requestSubmit();
+        }
+      }
+    },
+    [],
+  );
 
   const seedFirstTurn = async () => {
     setBusy(true);
@@ -173,24 +200,25 @@ export function ChatLesson(props: Props) {
         <textarea
           id="chat-input"
           data-testid="chat-input"
+          className="chat-input"
+          ref={textareaRef}
+          rows={1}
           placeholder={
             complete
               ? "This lesson is complete — navigate to the next lesson."
-              : "Type your reply…"
+              : "Reply…"
           }
+          aria-label="Your reply"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onComposerKeyDown}
           disabled={busy || complete}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send(e as unknown as React.FormEvent<HTMLFormElement>);
-            }
-          }}
         />
         <button
           type="submit"
+          className="chat-send"
           data-testid="chat-send"
+          aria-label="Send reply"
           disabled={busy || complete || input.trim().length === 0}
         >
           {busy ? <span className="spinner" /> : "Send"}

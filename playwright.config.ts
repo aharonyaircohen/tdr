@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
+const port = new URL(baseURL).port || "3000";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
@@ -10,13 +13,15 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   globalSetup: "./tests/e2e/global-setup.ts",
   webServer: {
-    command: "ALLOW_DEV_RESET=true npm run dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
+    command: `ALLOW_DEV_RESET=true npm run dev -- -p ${port}`,
+    url: baseURL,
+    // Reusing an arbitrary server can silently test another checkout. A busy
+    // port must fail loudly so every result proves this working tree.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000",
+    baseURL,
     trace: "retain-on-failure",
     actionTimeout: 10_000,
   },
@@ -26,7 +31,5 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  // The e2e suite expects a running dev server seeded with the demo course.
-  // `npm run dev` is started by CI before invoking `playwright test`. Locally,
-  // run `npm run dev` in another terminal and then `npm run test:e2e`.
+  // Playwright owns the seeded dev server so the tested checkout is explicit.
 });

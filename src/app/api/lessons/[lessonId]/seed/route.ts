@@ -26,8 +26,14 @@ export async function POST(
   }
   const script = parseScript(lesson.script);
   const reply = selectTutorReply(script, [] satisfies ConversationTurn[]);
-  const created = await prisma.message.create({
-    data: {
+  const seedMessageId = `lesson-seed:${lesson.id}`;
+  // The deterministic id makes the first write atomic across Strict Mode,
+  // network retries, and multiple tabs.
+  const created = await prisma.message.upsert({
+    where: { id: seedMessageId },
+    update: {},
+    create: {
+      id: seedMessageId,
       lessonId: lesson.id,
       role: "tutor",
       content: reply.content,

@@ -117,6 +117,21 @@ async function seedFixtures() {
 }
 
 describe("sendTurn + resume flow", () => {
+  it("seeds exactly one opening tutor message under concurrent retries", async () => {
+    const { lessons } = await seedFixtures();
+    const { POST } = await import("@/app/api/lessons/[lessonId]/seed/route");
+    const context = { params: Promise.resolve({ lessonId: lessons[0].id }) };
+
+    const [first, second] = await Promise.all([
+      POST(new Request("http://localhost/seed", { method: "POST" }), context),
+      POST(new Request("http://localhost/seed", { method: "POST" }), context),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await prisma.message.count({ where: { lessonId: lessons[0].id } })).toBe(1);
+  });
+
   it("walks the full scripted lesson and marks it complete", async () => {
     const { lessons } = await seedFixtures();
     const learner = "test-learner";
