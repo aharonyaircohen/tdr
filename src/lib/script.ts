@@ -39,11 +39,11 @@ export function parseScript(scriptJson: string): ScriptStep[] {
  * - If the next step is a tutor line, we emit it.
  * - If the conversation already contains the final tutor line and the learner has
  *   satisfied its expected reply, we mark the lesson complete.
- * - Wrong learner replies (and any other "noise" turns that don't line up with
- *   the current script step) are skipped over during replay rather than treated
- *   as a hard break. The wrong learner message stays visible in the transcript;
- *   the engine simply walks past it. This is what lets a learner recover from
- *   a wrong answer: a later matching learner turn still advances the script.
+ * - Wrong learner replies and the retry feedback they produce are skipped over
+ *   during replay rather than treated as a hard break. Other transcript
+ *   mismatches still fail safely instead of being silently accepted. The wrong
+ *   learner message stays visible in the transcript; a later matching learner
+ *   turn can still advance the script.
  *   On the turn that follows a wrong learner reply, the engine emits concise
  *   retry feedback that references the scripted learner prompt so the learner
  *   knows what to try again.
@@ -62,43 +62,38 @@ export function selectTutorReply(
     return { content: first.content, isComplete: false, nextStepIndex: 1 };
   }
 
-  // Replay conversation against script to find current position. Anything that
-  // does not line up with the current script step is treated as noise and
-  // skipped past (convoIdx advances, stepIndex does not). This makes the
-  // engine tolerant of wrong learner replies and keeps a later matching reply
-  // able to advance the lesson.
+  // Replay conversation against the script. Only a wrong learner reply and the
+  // exact retry feedback generated for that step are recoverable. Treating all
+  // mismatches as noise would hide corrupted or out-of-order tutor history.
   let stepIndex = 0;
   let convoIdx = 0;
-  let skippedAny = false;
+  let wrongAtCurrentLearnerStep = false;
   while (stepIndex < script.length && convoIdx < conversation.length) {
     const step = script[stepIndex];
     const turn = conversation[convoIdx];
     if (step.kind === "tutor") {
       if (turn.role !== "tutor" || turn.content !== step.content) {
-        // Non-matching tutor turn (e.g. a retry feedback we emitted on an
-        // earlier wrong learner reply). Skip past it; the script has not
-        // advanced.
-        convoIdx += 1;
-        skippedAny = true;
-        continue;
+        return divergenceReply(stepIndex);
       }
       stepIndex += 1;
       convoIdx += 1;
     } else {
       // learner expected input
       if (turn.role !== "learner") {
-        // Tutor message at a learner step is noise; skip it.
-        convoIdx += 1;
-        skippedAny = true;
-        continue;
+        if (turn.role === "tutor" && turn.content === retryFeedback(step.prompt)) {
+          convoIdx += 1;
+          continue;
+        }
+        return divergenceReply(stepIndex);
       }
       if (!matchesExpect(turn.content, step.expect)) {
         // Wrong learner answer. Skip past it so a later matching answer can
         // still advance the lesson.
         convoIdx += 1;
-        skippedAny = true;
+        wrongAtCurrentLearnerStep = true;
         continue;
       }
+      wrongAtCurrentLearnerStep = false;
       stepIndex += 1;
       convoIdx += 1;
     }
@@ -140,7 +135,7 @@ export function selectTutorReply(
   // replay, surface concise retry feedback that references the scripted
   // prompt so the learner knows what to try again. Otherwise we're in the
   // natural waiting state (the tutor just spoke, awaiting the learner).
-  if (skippedAny) {
+  if (wrongAtCurrentLearnerStep) {
     return {
       content: retryFeedback(next.prompt),
       isComplete: false,
@@ -149,6 +144,14 @@ export function selectTutorReply(
   }
   return {
     content: "I'm waiting for your reply.",
+    isComplete: false,
+    nextStepIndex: stepIndex,
+  };
+}
+
+function divergenceReply(stepIndex: number): TutorReply {
+  return {
+    content: "I am a bit lost. Could you reply to my last message so I can keep going?",
     isComplete: false,
     nextStepIndex: stepIndex,
   };

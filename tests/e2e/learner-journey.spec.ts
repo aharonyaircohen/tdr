@@ -509,7 +509,7 @@ test.describe("Learner can recover from an incorrect chat answer", () => {
     await expect(retryBubble).toBeVisible();
     await expect(retryBubble).toContainText("Try again");
     await expect(retryBubble).toContainText(
-      "Learner indicates they are ready to continue",
+      "Say when you are ready to continue",
     );
     // The wrong reply is still visible — not silently dropped.
     await expect(

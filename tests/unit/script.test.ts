@@ -92,11 +92,11 @@ describe("selectTutorReply — recovery from a wrong learner answer", () => {
     { kind: "tutor", content: "Hello." },
     {
       kind: "learner",
-      prompt: "Learner signals readiness.",
+      prompt: "Say when you are ready.",
       expect: ["next", "ready"],
     },
     { kind: "tutor", content: "Continuing." },
-    { kind: "learner", prompt: "Learner agrees.", expect: ["yes"] },
+    { kind: "learner", prompt: "Say whether you agree.", expect: ["yes"] },
     { kind: "tutor", content: "Done." },
   ];
 
@@ -107,16 +107,16 @@ describe("selectTutorReply — recovery from a wrong learner answer", () => {
     ]);
     expect(reply.isComplete).toBe(false);
     expect(reply.content).toBe(
-      retryFeedback("Learner signals readiness."),
+      retryFeedback("Say when you are ready."),
     );
-    expect(reply.content).toContain("Learner signals readiness.");
+    expect(reply.content).toContain("Say when you are ready.");
   });
 
   it("a later matching learner answer advances the lesson, ignoring the prior wrong turn", () => {
     const reply = selectTutorReply(recoveryScript, [
       { role: "tutor", content: "Hello." },
       { role: "learner", content: "watermelon" }, // wrong, persisted
-      { role: "tutor", content: retryFeedback("Learner signals readiness.") },
+      { role: "tutor", content: retryFeedback("Say when you are ready.") },
       { role: "learner", content: "next" }, // correct retry
     ]);
     expect(reply.isComplete).toBe(false);
@@ -134,8 +134,8 @@ describe("selectTutorReply — recovery from a wrong learner answer", () => {
       { role: "tutor", content: r1.content },
       { role: "learner", content: "potato" },
     ]);
-    expect(r1.content).toBe(retryFeedback("Learner signals readiness."));
-    expect(r2.content).toBe(retryFeedback("Learner signals readiness."));
+    expect(r1.content).toBe(retryFeedback("Say when you are ready."));
+    expect(r2.content).toBe(retryFeedback("Say when you are ready."));
   });
 
   it("a wrong answer after partial progress still recovers and advances", () => {
@@ -148,7 +148,7 @@ describe("selectTutorReply — recovery from a wrong learner answer", () => {
       { role: "learner", content: "watermelon" },
     ]);
     expect(partial.isComplete).toBe(false);
-    expect(partial.content).toBe(retryFeedback("Learner agrees."));
+    expect(partial.content).toBe(retryFeedback("Say whether you agree."));
 
     // Then a correct retry completes the lesson.
     const complete = selectTutorReply(recoveryScript, [
@@ -170,9 +170,18 @@ describe("selectTutorReply — recovery from a wrong learner answer", () => {
     expect(reply.content).toBe("I'm waiting for your reply.");
   });
 
+  it("does not silently skip an unexpected tutor turn", () => {
+    const reply = selectTutorReply(recoveryScript, [
+      { role: "tutor", content: "A corrupted tutor message." },
+    ]);
+    expect(reply.isComplete).toBe(false);
+    expect(reply.content).toContain("I am a bit lost");
+    expect(reply.nextStepIndex).toBe(0);
+  });
+
   it("retryFeedback is deterministic and includes the prompt verbatim", () => {
-    expect(retryFeedback("Learner signals readiness.")).toBe(
-      "That doesn't match what I'm looking for. Try again — I'm asking: Learner signals readiness.",
+    expect(retryFeedback("Say when you are ready.")).toBe(
+      "That doesn't match what I'm looking for. Try again — I'm asking: Say when you are ready.",
     );
   });
 });

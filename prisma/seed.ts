@@ -21,7 +21,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner indicates they are ready to continue.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -33,7 +33,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner shares something they already knew.",
+      prompt: "Share one thing you already knew about LLMs.",
       expect: [
         "i know",
         "i knew",
@@ -55,7 +55,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],
@@ -68,7 +68,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner is ready.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -79,7 +79,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner gives a number estimate.",
+      prompt: "Give a rough number-of-tokens estimate.",
       expect: ["two", "three", "2", "3", "few", "tokens", "small"],
     },
     {
@@ -91,7 +91,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],
@@ -105,7 +105,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner is ready.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -116,7 +116,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner names a part.",
+      prompt: "Name one of the three useful prompt parts.",
       expect: ["intent", "context", "output", "shape", "format", "specific"],
     },
     {
@@ -126,7 +126,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],
@@ -140,7 +140,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner is ready.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -152,7 +152,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner explains why the role helps.",
+      prompt: "Explain why giving the model a role and audience helps.",
       expect: [
         "audience",
         "reader",
@@ -175,7 +175,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],
@@ -188,7 +188,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner is ready.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -199,7 +199,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner gives a scenario.",
+      prompt: "Give one scenario where examples would improve a prompt.",
       expect: [
         "format",
         "style",
@@ -222,7 +222,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],
@@ -235,7 +235,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner is ready.",
+      prompt: "Say when you are ready to continue.",
       expect: ["next", "continue", "ready", "ok", "okay", "yes"],
     },
     {
@@ -247,7 +247,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner names a constraint.",
+      prompt: "Name one useful constraint for an article-summary prompt.",
       expect: [
         "bullet",
         "bullets",
@@ -272,7 +272,7 @@ const lessonScripts: Record<string, Step[]> = {
     },
     {
       kind: "learner",
-      prompt: "Learner marks the lesson complete.",
+      prompt: "Type done when you are ready to complete the lesson.",
       expect: ["done", "finish", "complete", "next"],
     },
   ],

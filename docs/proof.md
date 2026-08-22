@@ -237,13 +237,12 @@ behind it and the lesson could never advance. The generic nudge
 ("I am waiting for your reply" / "I am a bit lost") also did not tell the
 learner what to retry.
 
-The fix is in `selectTutorReply` (single file). The replay loop now skips
-past any turn that does not line up with the current script step —
-wrong learner replies, unexpected tutor messages, and the retry feedback
-itself — instead of breaking on a mismatch. After replay:
+The fix is in `selectTutorReply`. The replay loop now skips a wrong learner
+reply and the exact retry feedback generated for that same step. It does not
+silently skip arbitrary tutor or ordering mismatches. After replay:
 
-- If the engine is positioned at a learner step and at least one turn was
-  skipped during replay, the reply is **concise retry feedback** that
+- If the latest answer left the engine at the same learner step, the reply is
+  **concise retry feedback** that
   references the scripted learner prompt:
   `That doesn't match what I'm looking for. Try again — I'm asking: <prompt>.`
 - Otherwise the engine returns the natural waiting nudge (no wrong turns
@@ -253,6 +252,8 @@ The wrong learner turn and the retry feedback are both persisted as
 normal `Message` rows so the learner can see what they tried and what the
 tutor wants. A later matching reply still advances the lesson as if the
 wrong turn had never happened — there is no transcript-poisoning.
+Seeded lesson prompts are written as learner-facing instructions because the
+retry message may display them; matching keywords remain internal.
 
 ### Behavior summary
 
