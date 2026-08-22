@@ -4,8 +4,10 @@ import {
   canEnterLesson,
   isLessonComplete,
   summariseProgress,
+  summariseCourseProgress,
+  pickRecentActiveCourse,
 } from "@/lib/progress";
-import type { Lesson, Progress } from "@prisma/client";
+import type { Course, Lesson, Progress } from "@prisma/client";
 
 function makeLesson(over: Partial<Lesson>): Lesson {
   return {
@@ -19,13 +21,28 @@ function makeLesson(over: Partial<Lesson>): Lesson {
   };
 }
 
-function makeProgress(learnerId: string, lessonId: string, completed: boolean): Progress {
+function makeProgress(
+  learnerId: string,
+  lessonId: string,
+  completed: boolean,
+  updatedAt: Date = new Date(),
+): Progress {
   return {
     id: `${learnerId}-${lessonId}`,
     learnerId,
     lessonId,
     completed,
-    updatedAt: new Date(),
+    updatedAt,
+  };
+}
+
+function makeCourse(over: Partial<Course>): Course {
+  return {
+    id: over.id ?? "course",
+    slug: over.slug ?? "course",
+    title: over.title ?? "Course",
+    description: over.description ?? "desc",
+    createdAt: over.createdAt ?? new Date(),
   };
 }
 
@@ -125,5 +142,158 @@ describe("isLessonComplete + summariseProgress", () => {
       completed: 1,
       total: 2,
     });
+  });
+});
+
+describe("summariseCourseProgress", () => {
+  const learner = "u1";
+  const lessons = [
+    { ...makeLesson({ id: "l1", order: 1 }), progress: [] },
+    { ...makeLesson({ id: "l2", order: 2 }), progress: [] },
+    { ...makeLesson({ id: "l3", order: 3 }), progress: [] },
+  ];
+  const course = {
+    ...makeCourse({ id: "c1", slug: "intro", title: "Intro" }),
+    lessons,
+  };
+
+  it("reports not-started when there is no progress", () => {
+    const out = summariseCourseProgress(course, learner);
+    expect(out.state).toBe("not-started");
+    expect(out.completed).toBe(0);
+    expect(out.total).toBe(3);
+    expect(out.lastActivityAt).toBeNull();
+  });
+
+  it("reports complete when every lesson is finished", () => {
+    const done = {
+      ...course,
+      lessons: lessons.map((l) => ({
+        ...l,
+        progress: [makeProgress(learner, l.id, true)],
+      })),
+    };
+    const out = summariseCourseProgress(done, learner);
+    expect(out.state).toBe("complete");
+    expect(out.completed).toBe(3);
+    expect(out.total).toBe(3);
+    expect(out.lastActivityAt).not.toBeNull();
+  });
+
+  it("reports in-progress when at least one lesson is incomplete", () => {
+    const partial = {
+      ...course,
+      lessons: lessons.map((l, i) => ({
+        ...l,
+        progress:
+          i === 0
+            ? [makeProgress(learner, l.id, true, new Date("2026-01-01"))]
+            : i === 1
+              ? [makeProgress(learner, l.id, false, new Date("2026-02-01"))]
+              : [],
+      })),
+    };
+    const out = summariseCourseProgress(partial, learner);
+    expect(out.state).toBe("in-progress");
+    expect(out.completed).toBe(1);
+    expect(out.total).toBe(3);
+    expect(out.lastActivityAt?.toISOString()).toBe("2026-02-01T00:00:00.000Z");
+  });
+
+  it("ignores progress rows from other learners when computing state", () => {
+    const mixed = {
+      ...course,
+      lessons: lessons.map((l) => ({
+        ...l,
+        progress: [makeProgress("someone-else", l.id, true)],
+      })),
+    };
+    const out = summariseCourseProgress(mixed, learner);
+    expect(out.state).toBe("not-started");
+  });
+});
+
+describe("pickRecentActiveCourse", () => {
+  const learner = "u1";
+
+  function buildCourse(id: string, lessonProgress: Progress[][]) {
+    const lessons = lessonProgress.map((rows, i) => ({
+      ...makeLesson({ id: `${id}-l${i + 1}`, courseId: id, order: i + 1 }),
+      progress: rows,
+    }));
+    return { ...makeCourse({ id, slug: id, title: id }), lessons };
+  }
+
+  it("returns null when no course has progress", () => {
+    const a = buildCourse("a", [[], [], []]);
+    const b = buildCourse("b", [[], [], []]);
+    expect(pickRecentActiveCourse([a, b], learner)).toBeNull();
+  });
+
+  it("returns the only course with an unfinished lesson", () => {
+    const a = buildCourse("a", [
+      [makeProgress(learner, "a-l1", true, new Date("2026-01-01"))],
+      [],
+      [],
+    ]);
+    const b = buildCourse("b", [
+      [makeProgress(learner, "b-l1", false, new Date("2026-02-01"))],
+      [],
+      [],
+    ]);
+    expect(pickRecentActiveCourse([a, b], learner)?.id).toBe("b");
+  });
+
+  it("does not let a completed course displace an unfinished one", () => {
+    // Course A completed very recently; course B was touched earlier but is
+    // still unfinished. The Continue card must surface B.
+    const a = buildCourse("a", [
+      [makeProgress(learner, "a-l1", true, new Date("2026-03-01"))],
+      [makeProgress(learner, "a-l2", true, new Date("2026-03-02"))],
+      [makeProgress(learner, "a-l3", true, new Date("2026-03-03"))],
+    ]);
+    const b = buildCourse("b", [
+      [makeProgress(learner, "b-l1", true, new Date("2026-02-01"))],
+      [makeProgress(learner, "b-l2", false, new Date("2026-02-02"))],
+      [],
+    ]);
+    expect(pickRecentActiveCourse([a, b], learner)?.id).toBe("b");
+  });
+
+  it("picks the most recently active unfinished course", () => {
+    const a = buildCourse("a", [
+      [makeProgress(learner, "a-l1", true, new Date("2026-01-01"))],
+      [makeProgress(learner, "a-l2", false, new Date("2026-01-02"))],
+      [],
+    ]);
+    const b = buildCourse("b", [
+      [makeProgress(learner, "b-l1", true, new Date("2026-02-01"))],
+      [makeProgress(learner, "b-l2", false, new Date("2026-02-05"))],
+      [],
+    ]);
+    expect(pickRecentActiveCourse([a, b], learner)?.id).toBe("b");
+  });
+
+  it("ignores progress from other learners", () => {
+    const a = buildCourse("a", [
+      [makeProgress("someone-else", "a-l1", false, new Date("2026-04-01"))],
+      [],
+      [],
+    ]);
+    expect(pickRecentActiveCourse([a], learner)).toBeNull();
+  });
+
+  it("returns null when every course is complete", () => {
+    const a = buildCourse("a", [
+      [makeProgress(learner, "a-l1", true, new Date("2026-01-01"))],
+      [makeProgress(learner, "a-l2", true, new Date("2026-01-02"))],
+      [],
+    ]);
+    const b = buildCourse("b", [
+      [makeProgress(learner, "b-l1", true, new Date("2026-02-01"))],
+      [],
+      [],
+    ]);
+    expect(pickRecentActiveCourse([a, b], learner)).toBeNull();
   });
 });

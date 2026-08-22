@@ -7,5 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #5: Learner dashboard — continue learning across multiple courses
 - #3: Learner UI polish — fix stray bullet and replace oversized composer… ([#4](https://github.com/aharonyaircohen/tdr/pull/4)) — @aharonyaircohen
 - #1: Vertical slice: chat-based LMS learner journey ([#2](https://github.com/aharonyaircohen/tdr/pull/2)) — @aharonyaircohen

@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how the vertical slice is put together. It is intentionally small: one stack, four models, one chat turn flow, one resume flow.
+This document describes how the vertical slice is put together. It is intentionally small: one stack, four models, one chat turn flow, one home dashboard, and one resume flow.
 
 ## Stack
 
@@ -108,28 +108,74 @@ ChatLesson client component
 2. `canEnterLesson(lessons, learnerId, targetId)` enforces ordering: the learner can only enter a lesson whose predecessors are all complete. (Currently the UI doesn't gate, but the helper is exported for use when admin/navigation features land.)
 3. Progress is upserted, not inserted, on every learner action — this makes resume idempotent across repeated sends.
 
+## Dashboard flow (multi-course)
+
+The home page (`src/app/page.tsx`) is a learner dashboard with two regions:
+
+```
+GET /
+   │
+   ▼
+service.listCourses() + summariseCourseProgress() per course
+   │
+   ▼
+pickRecentActiveCourse(courses, learnerId)
+   │
+   ▼
+Render:
+  - Continue learning card  (only when an unfinished course has activity)
+  - All courses catalog     (every course, with state + primary action)
+```
+
+### Selection invariants
+
+- `pickRecentActiveCourse` ignores courses whose every lesson is completed — a finished course cannot displace an in-progress one.
+- Among unfinished courses with at least one `Progress` row, the one whose **most recent** `Progress.updatedAt` is the latest wins.
+- `lastActivityAt` is the largest `Progress.updatedAt` across the course's lessons (any completion status), so the dashboard can also surface "last touched" metadata for complete courses.
+
+### State derivation (`summariseCourseProgress`)
+
+| Condition | State |
+| --- | --- |
+| No `Progress` rows for this learner | `not-started` |
+| Every lesson has `completed = true` | `complete` |
+| Otherwise | `in-progress` |
+
+The same helper returns `completed`, `total`, and `lastActivityAt`. The home page maps state to a primary action:
+
+| State | Primary action | Destination |
+| --- | --- | --- |
+| `not-started` | `Start course →` | `/courses/:slug/lessons/:startLessonSlug` |
+| `in-progress` | `Continue →` | `/courses/:slug/lessons/:resumeLessonSlug` |
+| `complete` | `Review →` | `/courses/:slug/lessons/:startLessonSlug` |
+
+### Isolation by course
+
+`Progress` is keyed on `(learnerId, lessonId)`. Because every helper filters by `learnerId` before comparing courses, courses cannot leak progress into one another. This is the same invariant the resume flow already depended on; the dashboard builds on top of it.
+
 ## File layout
 
 ```
 prisma/
   schema.prisma         # the four tables
-  seed.ts               # one course + three lessons, idempotent (upsert by slug)
+  seed.ts               # two courses × three lessons, idempotent (upsert by slug)
 
 src/lib/
   db.ts                 # singleton Prisma client
   learner.ts            # resolves the (currently hard-coded) learner id
   script.ts             # pure rule-based chat turn engine
-  progress.ts           # pickResumeLesson, canEnterLesson, isLessonComplete
+  progress.ts           # pickResumeLesson, pickRecentActiveCourse,
+                        # summariseCourseProgress, canEnterLesson, isLessonComplete
   service.ts            # the only writer to the DB from request handlers
 
 src/app/
   layout.tsx
-  page.tsx                                    # course list
+  page.tsx                                    # learner dashboard (Continue + catalog)
   courses/[slug]/page.tsx                     # course view (lesson list + progress)
   courses/[slug]/lessons/[lessonSlug]/
     page.tsx                                   # server: hydrate transcript
     chat-lesson.tsx                            # client: chat form + transcript
-  api/courses/route.ts                        # GET: list courses (JSON)
+  api/courses/route.ts                        # GET: list courses (JSON, extended)
   api/courses/[slug]/route.ts                 # GET: course + lessons (JSON)
   api/lessons/[lessonId]/seed/route.ts        # POST: emit opening tutor line
   api/lessons/[lessonId]/messages/route.ts    # POST: sendTurn
@@ -138,7 +184,7 @@ src/app/
 tests/
   unit/                # pure unit tests for script.ts and progress.ts
   integration/         # DB-backed service tests (fresh sqlite per test)
-  e2e/                 # Playwright full-journey test
+  e2e/                 # Playwright full-journey + multi-course dashboard tests
 ```
 
 ## Out of scope

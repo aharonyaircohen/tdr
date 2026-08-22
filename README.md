@@ -1,13 +1,16 @@
 # The Digital Reality (TDR)
 
-A chat-based learning management system. This repository is the **vertical slice**: one learner journey, end-to-end, against a running app.
+A chat-based learning management system. This repository is the **vertical slice**: a learner dashboard that lets a learner browse multiple courses, see independent progress on each, and continue the right unfinished lesson — all chat-based, against a running app.
 
 ## What you can do
 
 1. Open the app at `http://localhost:3000`.
-2. Pick the seeded course ("Intro to Large Language Models").
-3. Chat with the tutor through three lessons. Each tutor message advances the lesson; the lesson is marked complete when the script finishes.
-4. Close the browser. Reopen the app. You land back on the next unfinished lesson, with all prior chat history restored.
+2. See the home dashboard with a **Continue learning** card (only when progress exists) and an **All courses** catalog.
+3. Pick one of the seeded courses ("Intro to Large Language Models" or "Prompting patterns for engineers").
+4. Chat with the tutor through the lesson script. Each tutor message advances the lesson; the lesson is marked complete when the script finishes.
+5. Start a second course — its progress stays isolated on its own card.
+6. Return home and the Continue card jumps to whichever unfinished course was touched most recently (a course that is fully complete never replaces a still-active one).
+7. Close the browser. Reopen the app. You land back on the most-recent unfinished lesson, with all prior chat history restored for every course.
 
 ## Stack
 
@@ -62,14 +65,16 @@ See [`docs/proof.md`](docs/proof.md) for the exact clicks, an HTTP transcript, a
 .
 ├── prisma/
 │   ├── schema.prisma     # data model
-│   ├── seed.ts           # idempotent seed (one course, three lessons)
+│   ├── seed.ts           # idempotent seed (two courses × three lessons)
 │   └── dev.db            # SQLite file (gitignored)
 ├── src/
 │   ├── app/              # Next.js App Router (UI + API routes)
 │   ├── lib/              # db, script engine, progress, service layer
 │   └── ...
 ├── scripts/
-│   └── capture-proof.mts # one-shot screenshot capture for docs/proof.md
+│   ├── capture-proof.mts                  # original 3/3 journey screenshots
+│   ├── capture-polish-screenshots.mts     # compact composer + mobile screenshots
+│   └── capture-dashboard-screenshots.mts  # multi-course dashboard screenshots
 ├── tests/
 │   ├── unit/             # pure unit tests (no DB)
 │   ├── integration/      # DB-backed service tests
@@ -86,3 +91,17 @@ More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ## What's explicitly **not** in this slice
 
 Auth, user accounts, admin/course-author UI, real LLM integration, streaming, multimodal input, notifications, email, analytics, billing, mobile apps, i18n. These are tracked as future work.
+
+## Dashboard, at a glance
+
+The home page (`src/app/page.tsx`) renders two regions:
+
+- **Continue learning** — a single card that surfaces the most-recently-active unfinished course. Hidden when no course has progress.
+- **All courses** — the full catalog, with per-course state (`Not started`, `x / y complete`, `Complete`) and a primary action (`Start course →`, `Continue →`, or `Review →`).
+
+Selection logic lives in [`src/lib/progress.ts`](src/lib/progress.ts):
+
+- `pickRecentActiveCourse(courses, learnerId)` — returns the unfinished course whose most-recent `Progress.updatedAt` is the latest. A complete course is never a candidate, even if its activity is more recent.
+- `summariseCourseProgress(course, learnerId)` — derives `state`, `completed`, `total`, and `lastActivityAt` per course.
+
+Both helpers are unit-tested in [`tests/unit/progress.test.ts`](tests/unit/progress.test.ts) and integration-tested in [`tests/integration/journey.test.ts`](tests/integration/journey.test.ts).

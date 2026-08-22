@@ -9,10 +9,29 @@ import {
   selectTutorReply,
 } from "./script";
 import { getCurrentLearnerId } from "./learner";
-import { pickResumeLesson, canEnterLesson } from "./progress";
+import {
+  pickResumeLesson,
+  canEnterLesson,
+  summariseCourseProgress,
+  CourseProgressState,
+} from "./progress";
 import { Prisma } from "@prisma/client";
 
-export async function listCourses() {
+export type CourseSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  lessons: { id: string; slug: string; title: string; order: number }[];
+  resumeLessonSlug: string | null;
+  startLessonSlug: string | null;
+  completedCount: number;
+  totalCount: number;
+  state: CourseProgressState;
+  lastActivityAt: string | null;
+};
+
+export async function listCourses(): Promise<CourseSummary[]> {
   const learnerId = getCurrentLearnerId();
   const courses = await prisma.course.findMany({
     include: {
@@ -23,19 +42,30 @@ export async function listCourses() {
     },
     orderBy: { createdAt: "asc" },
   });
-  return courses.map((course) => ({
-    id: course.id,
-    slug: course.slug,
-    title: course.title,
-    description: course.description,
-    lessons: course.lessons.map((lesson) => ({
-      id: lesson.id,
-      slug: lesson.slug,
-      title: lesson.title,
-      order: lesson.order,
-    })),
-    resumeLessonSlug: pickResumeLesson(course.lessons, learnerId)?.slug,
-  }));
+  return courses.map((course) => {
+    const summary = summariseCourseProgress(course, learnerId);
+    const sortedLessons = [...course.lessons].sort((a, b) => a.order - b.order);
+    return {
+      id: course.id,
+      slug: course.slug,
+      title: course.title,
+      description: course.description,
+      lessons: sortedLessons.map((lesson) => ({
+        id: lesson.id,
+        slug: lesson.slug,
+        title: lesson.title,
+        order: lesson.order,
+      })),
+      resumeLessonSlug: pickResumeLesson(course.lessons, learnerId)?.slug ?? null,
+      startLessonSlug: sortedLessons[0]?.slug ?? null,
+      completedCount: summary.completed,
+      totalCount: summary.total,
+      state: summary.state,
+      lastActivityAt: summary.lastActivityAt
+        ? summary.lastActivityAt.toISOString()
+        : null,
+    };
+  });
 }
 
 export async function getCourseWithLessons(slug: string) {
