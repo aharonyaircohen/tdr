@@ -47,7 +47,7 @@ npm run db:reset
 
 ```bash
 npm run verify               # typecheck + lint + unit + integration tests
-npm run test:e2e             # Playwright (requires a running dev/start server)
+npm run test:e2e             # Playwright starts and owns an isolated dev server
 ```
 
 The CI workflow (`.github/workflows/ci.yml`) runs the same scripts on every PR.

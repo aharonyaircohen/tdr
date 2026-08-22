@@ -4,7 +4,7 @@ This document describes how the vertical slice is put together. It is intentiona
 
 ## Stack
 
-- **Next.js 14 App Router** (TypeScript) for both UI (React server components + one client component for the chat) and the HTTP API (`/api/lessons/[id]/...` route handlers).
+- **Next.js 16 App Router** (TypeScript) for both UI (React server components + one client component for the chat) and the HTTP API (`/api/lessons/[id]/...` route handlers).
 - **Prisma + SQLite** for persistence. The schema lives in `prisma/schema.prisma`.
 - **Vitest + Playwright** for tests.
 
