@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #7: Preserve learner progress across normal app restarts — non-destructive seed; `npm run db:reset` remains the only destructive path
 - #5: Learner dashboard — continue learning across multiple courses ([#6](https://github.com/aharonyaircohen/tdr/pull/6)) — @aharonyaircohen
 - #5: Learner dashboard — continue learning across multiple courses
 - #3: Learner UI polish — fix stray bullet and replace oversized composer… ([#4](https://github.com/aharonyaircohen/tdr/pull/4)) — @aharonyaircohen

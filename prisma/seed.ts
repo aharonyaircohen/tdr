@@ -1,4 +1,7 @@
-// Seed: two courses with three lessons each. Idempotent — uses upsert on unique slugs.
+// Seed: two courses with three lessons each. Idempotent on content — uses
+// upsert on unique slugs — and intentionally non-destructive on learner
+// state. Re-running it on an existing database must NOT delete any
+// `Message` or `Progress` rows; the destructive reset path is `npm run db:reset`.
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -340,14 +343,11 @@ async function main() {
     await upsertLesson(courseB.id, spec, script);
   }
 
-  // Clean any orphan messages/progress for these lessons so seed is idempotent on content too.
-  const allLessonIds = (
-    await prisma.lesson.findMany({
-      where: { courseId: { in: [courseA.id, courseB.id] } },
-    })
-  ).map((l) => l.id);
-  await prisma.message.deleteMany({ where: { lessonId: { in: allLessonIds } } });
-  await prisma.progress.deleteMany({ where: { lessonId: { in: allLessonIds } } });
+  // Note: this seed is intentionally non-destructive. Re-running it on an
+  // existing database must preserve learner-owned `Message` and `Progress`
+  // rows so a normal `npm run dev` restart does not lose learner state.
+  // The intentional destructive path is `npm run db:reset`, which deletes
+  // the SQLite file before re-pushing the schema and re-seeding.
 
   console.log(
     `Seeded 2 courses with ${courseALessons.length + courseBLessons.length} lessons total.`,
