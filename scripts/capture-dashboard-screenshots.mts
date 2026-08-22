@@ -33,6 +33,10 @@ async function driveFirstTurn(page: Page, courseSlug: string, firstLessonSlug: s
     () => document.querySelectorAll('[data-testid="bubble-learner"]').length === 1,
     { timeout: 15_000 },
   );
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="bubble-tutor"]').length === 2,
+    { timeout: 15_000 },
+  );
 }
 
 const browser = await chromium.launch();

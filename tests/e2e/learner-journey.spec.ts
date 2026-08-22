@@ -22,7 +22,7 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByRole("heading", { name: /The Digital Reality/i }),
     ).toBeVisible();
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
 
     // The course view should auto-redirect into the first lesson.
     await expect(page).toHaveURL(
@@ -77,7 +77,7 @@ test.describe("Learner journey — full vertical slice", () => {
     const fresh = await ctx.browser()!.newContext();
     const newPage = await fresh.newPage();
     await newPage.goto("/");
-    await newPage.getByTestId("open-course-intro-to-llms").click();
+    await newPage.getByTestId("continue-course-intro-to-llms").click();
     await expect(newPage).toHaveURL(/\/lessons\/tokens-and-context$/, {
       timeout: 15_000,
     });
@@ -191,7 +191,7 @@ test.describe("Learner journey — full vertical slice", () => {
     page,
   }) => {
     await page.goto("/");
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
     await expect(page).toHaveURL(/\/lessons\/what-is-llm$/);
     await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
       timeout: 15_000,
@@ -249,7 +249,7 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByRole("heading", { name: /The Digital Reality/i }),
     ).toBeVisible();
-    await page.getByTestId("open-course-intro-to-llms").click();
+    await page.getByTestId("start-course-intro-to-llms").click();
     await expect(page).toHaveURL(/\/lessons\/what-is-llm$/, { timeout: 15_000 });
     await expect(page.getByTestId("bubble-tutor").first()).toBeVisible({
       timeout: 15_000,
@@ -266,6 +266,9 @@ test.describe("Learner journey — full vertical slice", () => {
     await expect(
       page.getByTestId("chat-transcript").locator("[data-testid=bubble-learner]"),
     ).toHaveCount(1, { timeout: 10_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
 
     await page.getByTestId("chat-input").fill(
       "I've heard about them on podcasts and read a couple of beginner articles, so I know a little about how they work but I would not call myself an expert.",
@@ -327,6 +330,9 @@ test.describe("Learner dashboard — multi-course", () => {
     await expect(
       page.getByTestId("chat-transcript").locator("[data-testid=bubble-learner]"),
     ).toHaveCount(1, { timeout: 10_000 });
+    await expect(
+      page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+    ).toHaveCount(2, { timeout: 10_000 });
 
     // Return home — Continue card now appears, course A is in progress,
     // course B remains not started.
@@ -368,6 +374,9 @@ test.describe("Learner dashboard — multi-course", () => {
           .getByTestId("chat-transcript")
           .locator("[data-testid=bubble-learner]"),
       ).toHaveCount(1, { timeout: 10_000 });
+      await expect(
+        page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+      ).toHaveCount(2, { timeout: 10_000 });
 
       // Go home and start course B — make one in-progress turn.
       await page.goto("/");
@@ -387,6 +396,9 @@ test.describe("Learner dashboard — multi-course", () => {
           .getByTestId("chat-transcript")
           .locator("[data-testid=bubble-learner]"),
       ).toHaveCount(1, { timeout: 10_000 });
+      await expect(
+        page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
+      ).toHaveCount(2, { timeout: 10_000 });
 
       // Return home — Continue card must now point at course B (most recent).
       await page.goto("/");
@@ -426,7 +438,7 @@ test.describe("Learner dashboard — multi-course", () => {
     });
     await expect(
       page.getByTestId("chat-transcript").locator("[data-testid=bubble-tutor]"),
-    ).toHaveCount(1);
+    ).toHaveCount(2);
     await expect(
       page
         .getByTestId("chat-transcript")

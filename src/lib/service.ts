@@ -11,6 +11,7 @@ import {
 import { getCurrentLearnerId } from "./learner";
 import {
   pickResumeLesson,
+  pickRecentActiveCourse,
   canEnterLesson,
   summariseCourseProgress,
   CourseProgressState,
@@ -24,6 +25,7 @@ export type CourseSummary = {
   description: string;
   lessons: { id: string; slug: string; title: string; order: number }[];
   resumeLessonSlug: string | null;
+  resumeLessonTitle: string | null;
   startLessonSlug: string | null;
   completedCount: number;
   totalCount: number;
@@ -31,7 +33,12 @@ export type CourseSummary = {
   lastActivityAt: string | null;
 };
 
-export async function listCourses(): Promise<CourseSummary[]> {
+export type LearnerDashboard = {
+  courses: CourseSummary[];
+  continueCourseId: string | null;
+};
+
+export async function getLearnerDashboard(): Promise<LearnerDashboard> {
   const learnerId = getCurrentLearnerId();
   const courses = await prisma.course.findMany({
     include: {
@@ -42,9 +49,11 @@ export async function listCourses(): Promise<CourseSummary[]> {
     },
     orderBy: { createdAt: "asc" },
   });
-  return courses.map((course) => {
+  const activeCourse = pickRecentActiveCourse(courses, learnerId);
+  const summaries = courses.map((course) => {
     const summary = summariseCourseProgress(course, learnerId);
     const sortedLessons = [...course.lessons].sort((a, b) => a.order - b.order);
+    const resumeLesson = pickResumeLesson(course.lessons, learnerId);
     return {
       id: course.id,
       slug: course.slug,
@@ -56,7 +65,8 @@ export async function listCourses(): Promise<CourseSummary[]> {
         title: lesson.title,
         order: lesson.order,
       })),
-      resumeLessonSlug: pickResumeLesson(course.lessons, learnerId)?.slug ?? null,
+      resumeLessonSlug: resumeLesson?.slug ?? null,
+      resumeLessonTitle: resumeLesson?.title ?? null,
       startLessonSlug: sortedLessons[0]?.slug ?? null,
       completedCount: summary.completed,
       totalCount: summary.total,
@@ -66,6 +76,11 @@ export async function listCourses(): Promise<CourseSummary[]> {
         : null,
     };
   });
+  return { courses: summaries, continueCourseId: activeCourse?.id ?? null };
+}
+
+export async function listCourses(): Promise<CourseSummary[]> {
+  return (await getLearnerDashboard()).courses;
 }
 
 export async function getCourseWithLessons(slug: string) {

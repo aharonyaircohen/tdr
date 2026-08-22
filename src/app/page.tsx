@@ -1,11 +1,5 @@
 import Link from "next/link";
-import { listCourses, type CourseSummary } from "@/lib/service";
-import {
-  pickRecentActiveCourse,
-  type CourseWithLessons,
-} from "@/lib/progress";
-import { prisma } from "@/lib/db";
-import { getCurrentLearnerId } from "@/lib/learner";
+import { getLearnerDashboard, type CourseSummary } from "@/lib/service";
 
 export const dynamic = "force-dynamic";
 
@@ -20,28 +14,15 @@ type ContinueCard = {
 
 function pickContinueCard(
   courses: CourseSummary[],
-  coursesWithLessons: CourseWithLessons[],
-  learnerId: string,
+  continueCourseId: string | null,
 ): ContinueCard | null {
-  const active = pickRecentActiveCourse(coursesWithLessons, learnerId);
-  if (!active) return null;
-  const summary = courses.find((c) => c.id === active.id);
+  const summary = courses.find((course) => course.id === continueCourseId);
   if (!summary) return null;
-  const nextLesson =
-    active.lessons
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .find(
-        (l) =>
-          !l.progress.find(
-            (row) => row.learnerId === learnerId && row.completed,
-          ),
-      ) ?? null;
   return {
     courseSlug: summary.slug,
     courseTitle: summary.title,
     nextLessonSlug: summary.resumeLessonSlug ?? summary.startLessonSlug,
-    nextLessonTitle: nextLesson?.title ?? null,
+    nextLessonTitle: summary.resumeLessonTitle,
     completedCount: summary.completedCount,
     totalCount: summary.totalCount,
   };
@@ -83,23 +64,8 @@ function primaryAction(course: CourseSummary) {
 }
 
 export default async function HomePage() {
-  const courses = await listCourses();
-  const learnerId = getCurrentLearnerId();
-
-  // Fetch the full CourseWithLessons[] needed by pickRecentActiveCourse. The
-  // service already pulls the same data; we re-query so the home page does
-  // not need to expose the raw model. Single round-trip via the DB.
-  const coursesWithLessons = await prisma.course.findMany({
-    include: {
-      lessons: {
-        orderBy: { order: "asc" },
-        include: { progress: { where: { learnerId } } },
-      },
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const continueCard = pickContinueCard(courses, coursesWithLessons, learnerId);
+  const { courses, continueCourseId } = await getLearnerDashboard();
+  const continueCard = pickContinueCard(courses, continueCourseId);
 
   return (
     <main className="container">

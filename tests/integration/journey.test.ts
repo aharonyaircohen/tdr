@@ -332,7 +332,7 @@ describe("multi-course dashboard helpers", () => {
     const learner = "iso-learner";
     process.env.CURRENT_LEARNER_ID = learner;
 
-    // Complete course A entirely.
+    // Complete course A's first lesson.
     await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "yes" });
     await sendTurn({ lessonId: lessonsA[0].id, learnerId: learner, content: "ok" });
     // Make one in-progress turn on course B.
@@ -350,10 +350,10 @@ describe("multi-course dashboard helpers", () => {
     expect(a.state).toBe("in-progress"); // a2 not started
     expect(a.completed).toBe(1);
     expect(b.state).toBe("in-progress");
-    expect(b.completed).toBe(0);
+    expect(b.completed).toBe(1);
 
     // The Continue card must point at course B (still has activity)
-    // rather than course A (whose latest row is older and now complete).
+    // rather than course A (whose latest row is older).
     const active = pickRecentActiveCourse(courses, learner);
     expect(active?.slug).toBe("course-b");
   });
@@ -395,7 +395,7 @@ describe("multi-course dashboard helpers", () => {
     const b = await listCourses();
     const introB = b.find((c) => c.slug === "course-a")!;
     expect(introB.state).toBe("in-progress");
-    expect(introB.completedCount).toBe(0);
+    expect(introB.completedCount).toBe(1);
     expect(introB.totalCount).toBe(2);
     expect(introB.lastActivityAt).not.toBeNull();
 

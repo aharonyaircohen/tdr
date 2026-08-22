@@ -287,12 +287,12 @@ describe("pickRecentActiveCourse", () => {
     const a = buildCourse("a", [
       [makeProgress(learner, "a-l1", true, new Date("2026-01-01"))],
       [makeProgress(learner, "a-l2", true, new Date("2026-01-02"))],
-      [],
+      [makeProgress(learner, "a-l3", true, new Date("2026-01-03"))],
     ]);
     const b = buildCourse("b", [
       [makeProgress(learner, "b-l1", true, new Date("2026-02-01"))],
-      [],
-      [],
+      [makeProgress(learner, "b-l2", true, new Date("2026-02-02"))],
+      [makeProgress(learner, "b-l3", true, new Date("2026-02-03"))],
     ]);
     expect(pickRecentActiveCourse([a, b], learner)).toBeNull();
   });
