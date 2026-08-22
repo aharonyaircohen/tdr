@@ -129,6 +129,8 @@ src/app/
   courses/[slug]/lessons/[lessonSlug]/
     page.tsx                                   # server: hydrate transcript
     chat-lesson.tsx                            # client: chat form + transcript
+  api/courses/route.ts                        # GET: list courses (JSON)
+  api/courses/[slug]/route.ts                 # GET: course + lessons (JSON)
   api/lessons/[lessonId]/seed/route.ts        # POST: emit opening tutor line
   api/lessons/[lessonId]/messages/route.ts    # POST: sendTurn
   api/lessons/[lessonId]/complete/route.ts    # POST: explicit mark-complete

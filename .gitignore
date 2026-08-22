@@ -10,7 +10,12 @@ prisma/test.db
 prisma/test.db-journal
 test-results/
 playwright-report/
+playwright/.cache/
 .env.local
 .env.production
 .env.development.local
 .env.test.local
+.env
+tsconfig.tsbuildinfo
+docs/screenshots/
+docs/proof-http-transcript.txt.tmp

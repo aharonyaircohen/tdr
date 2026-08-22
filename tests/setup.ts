@@ -17,6 +17,6 @@ const cwd = process.cwd();
 loadEnv(path.resolve(cwd, ".env.test"));
 loadEnv(path.resolve(cwd, ".env"));
 
-process.env.DATABASE_URL = process.env.DATABASE_URL ?? "file:./prisma/test.db";
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? "file:./test.db";
 process.env.CURRENT_LEARNER_ID = process.env.CURRENT_LEARNER_ID ?? "test-learner";
 process.env.NODE_ENV = "test";

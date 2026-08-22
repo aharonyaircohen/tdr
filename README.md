@@ -27,14 +27,14 @@ A chat-based learning management system. This repository is the **vertical slice
 
 ## Run it locally
 
+A fresh checkout needs two commands:
+
 ```bash
-npm ci              # install (uses package-lock.json)
-npm run db:push     # create prisma/dev.db from schema
-npm run db:seed     # seed one course with 3 lessons
-npm run dev         # http://localhost:3000
+npm ci        # install (uses package-lock.json)
+npm run dev   # creates prisma/dev.db, seeds one course + 3 lessons, starts Next on :3000
 ```
 
-That's it. The first `npm ci` will also run `prisma generate` via `postinstall`.
+`npm run dev` has a `predev` step (`npm run setup`) that runs `prisma generate`, `prisma db push`, and `tsx prisma/seed.ts` — so the database is always in sync with the schema on every dev start. The defaults are in the committed `.env` (`DATABASE_URL=file:./dev.db`, `CURRENT_LEARNER_ID=demo-learner`); override either by creating a `.env.local` (gitignored).
 
 ### Reset the database
 
@@ -49,11 +49,11 @@ npm run verify               # typecheck + lint + unit + integration tests
 npm run test:e2e             # Playwright (requires a running dev/start server)
 ```
 
-The CI workflow runs the same scripts on every PR.
+The CI workflow (`.github/workflows/ci.yml`) runs the same scripts on every PR.
 
 ## Demo the journey (proof recipe)
 
-See [`docs/proof.md`](docs/proof.md) for the exact clicks and an HTTP transcript.
+See [`docs/proof.md`](docs/proof.md) for the exact clicks, an HTTP transcript, and screenshots of the real running app.
 
 ## Project layout
 
@@ -67,11 +67,17 @@ See [`docs/proof.md`](docs/proof.md) for the exact clicks and an HTTP transcript
 │   ├── app/              # Next.js App Router (UI + API routes)
 │   ├── lib/              # db, script engine, progress, service layer
 │   └── ...
+├── scripts/
+│   └── capture-proof.mts # one-shot screenshot capture for docs/proof.md
 ├── tests/
 │   ├── unit/             # pure unit tests (no DB)
 │   ├── integration/      # DB-backed service tests
 │   └── e2e/              # Playwright headless journey
-└── .github/workflows/    # CI: lint + unit + e2e
+├── docs/
+│   ├── proof.md                      # proof doc with screenshots + transcript
+│   ├── proof-http-transcript.txt     # captured HTTP responses
+│   └── screenshots/                  # PNG screenshots of the journey
+└── .github/workflows/    # CI: lint + typecheck + unit + e2e
 ```
 
 More detail in [`ARCHITECTURE.md`](ARCHITECTURE.md).
