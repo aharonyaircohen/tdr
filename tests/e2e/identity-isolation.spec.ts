@@ -50,8 +50,11 @@ test.describe("Cookie-backed identity isolation (issue #23)", () => {
     const aliceEmail = "alice@tdr.test";
     const alicePassword = "hunter22-correcthorse";
 
-    // Register Alice and follow the redirect to /.
+    // Register Alice and follow the redirect to /. The login page defaults
+    // to "login" mode, so we must toggle into "register" before submitting
+    // or the API returns 401 (Alice doesn't exist yet on a fresh dev.db).
     await alice.page.goto("/login");
+    await alice.page.getByTestId("toggle-register").click();
     await alice.page.getByTestId("auth-email").fill(aliceEmail);
     await alice.page.getByTestId("auth-password").fill(alicePassword);
     await alice.page.getByTestId("auth-submit").click();
@@ -88,6 +91,7 @@ test.describe("Cookie-backed identity isolation (issue #23)", () => {
     const bobEmail = "bob@tdr.test";
     const bobPassword = "hunter22-correcthorse";
     await bob.page.goto("/login");
+    await bob.page.getByTestId("toggle-register").click();
     await bob.page.getByTestId("auth-email").fill(bobEmail);
     await bob.page.getByTestId("auth-password").fill(bobPassword);
     await bob.page.getByTestId("auth-submit").click();
@@ -118,6 +122,27 @@ test.describe("Cookie-backed identity isolation (issue #23)", () => {
     ).toHaveCount(1, { timeout: 10_000 });
 
     // ----- Reload Alice's view: she must still see only her own turn -----
+    // Alice was logged out above to prove the logout endpoint works; the
+    // page now falls back to the env-var identity and can't see her own
+    // turns. Re-login so the lesson read picks up Alice's learner id and
+    // her chat history comes back.
+    const aliceReLogin = await alice.page.request.post("/api/auth/login", {
+      data: { email: aliceEmail, password: alicePassword },
+      headers: { "content-type": "application/json" },
+    });
+    expect(aliceReLogin.status()).toBe(200);
+    const aliceSetCookie = aliceReLogin.headers()["set-cookie"] ?? "";
+    expect(aliceSetCookie.toLowerCase()).toContain("tdr_session=");
+    await alice.ctx.addCookies(
+      aliceSetCookie.split(",").map((entry) => {
+        const [name, ...rest] = entry.split(";")[0].split("=");
+        return {
+          name,
+          value: rest.join("="),
+          url: BASE_URL,
+        };
+      }),
+    );
     await alice.page.goto(BASE_URL + "/courses/intro-to-llms/lessons/what-is-llm");
     await expect(
       alice.page.getByTestId("bubble-tutor").first(),

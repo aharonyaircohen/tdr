@@ -70,22 +70,30 @@ test.describe("Kody Brand Chat launch (issue #23)", () => {
   test("dashboard form-POSTs a fresh RS256 assertion to the Kody launch endpoint", async ({
     page,
   }) => {
-    const learnerId = await registerLearner(
-      page,
-      "kody-alice@tdr.test",
-      "hunter22-correcthorse",
-    );
-
-    // The dashboard needs the session cookie set on the same browser
-    // context that will click the launch button. Re-register via a fetch
-    // inside the browser context so the cookie sticks.
-    await page.goto("/");
-    const registerRes = await page.request.post("/api/auth/register", {
-      data: { email: "kody-alice@tdr.test", password: "hunter22-correcthorse" },
+    // Register via the page's request context so the session cookie is
+    // set on the same browser context that will click the launch button.
+    // The dev reset wipes learners, so the first call returns 200; if a
+    // stale learner already exists from a prior run, fall back to login.
+    const learnerEmail = "kody-alice@tdr.test";
+    const learnerPassword = "hunter22-correcthorse";
+    let registerRes = await page.request.post("/api/auth/register", {
+      data: { email: learnerEmail, password: learnerPassword },
       headers: { "content-type": "application/json" },
     });
-    // 200 first time, 409 on retries — accept either (we just need the cookie).
-    expect([200, 409]).toContain(registerRes.status());
+    let learnerId: string;
+    if (registerRes.status() === 200) {
+      const body = (await registerRes.json()) as { id: string; email: string };
+      learnerId = body.id;
+    } else {
+      expect(registerRes.status()).toBe(409);
+      const loginRes = await page.request.post("/api/auth/login", {
+        data: { email: learnerEmail, password: learnerPassword },
+        headers: { "content-type": "application/json" },
+      });
+      expect(loginRes.status()).toBe(200);
+      const body = (await loginRes.json()) as { id: string; email: string };
+      learnerId = body.id;
+    }
 
     // Set up the Kody stub. The form posts to kody.dev; we redirect the
     // request to a same-origin URL that returns a 302 redirect to the
