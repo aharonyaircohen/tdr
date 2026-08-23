@@ -9,7 +9,24 @@
 // the DB. This seed never writes `Message` rows itself — openings are
 // created lazily by the per-learner seed endpoint — so it leaves the
 // `learnerId` field alone.
+//
+// Issue #23: also seeds a single demo `Learner { id: "demo-learner", email:
+// "demo@tdr.local", ... }` row so legacy `Message` rows and pre-#23
+// `Progress` rows (both owned by `demo-learner`) remain reachable via the
+// new cookie-based login flow. The id is the same literal that the env
+// fallback in `src/lib/learner.ts` resolves, so existing test/dev paths
+// keep working unchanged. The password hash is a random scrypt value —
+// nobody is supposed to log in via the demo account; it exists to keep
+// the foreign-key-style `learnerId` field on `Message`/`Progress` valid.
 import { PrismaClient } from "@prisma/client";
+import { randomBytes, scrypt as scryptCb } from "node:crypto";
+import { promisify } from "node:util";
+
+const scrypt = promisify(scryptCb) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+) => Promise<Buffer>;
 
 const prisma = new PrismaClient();
 
@@ -312,6 +329,22 @@ async function upsertLesson(
 }
 
 async function main() {
+  // ----- Demo learner (issue #23) -----
+  // Backfill the Learner table so the legacy `Message` and `Progress` rows
+  // owned by `demo-learner` have a matching Learner account. Idempotent:
+  // upsert by id, and only generate a fresh random hash if the row is new.
+  const demoSalt = randomBytes(16);
+  const demoHash = await scrypt(randomBytes(32), demoSalt, 64);
+  await prisma.learner.upsert({
+    where: { id: "demo-learner" },
+    update: {},
+    create: {
+      id: "demo-learner",
+      email: "demo@tdr.local",
+      passwordHash: `scrypt$16384$64$${demoSalt.toString("base64")}$${demoHash.toString("base64")}`,
+    },
+  });
+
   // ----- Course A: existing vertical slice -----
   const courseA = await upsertCourse(
     "intro-to-llms",

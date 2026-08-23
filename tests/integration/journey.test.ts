@@ -1382,3 +1382,185 @@ describe("learner-owned messages — isolation & per-learner seed", () => {
     expect(progressB.learnerId).toBe(learnerB);
   });
 });
+
+describe("auth + identity isolation (issue #23)", () => {
+  // Issue #23: cookie-based auth composes with the existing per-learner
+  // isolation invariant. Registering two learners, logging in as A,
+  // completing a lesson, logging out, and logging in as B must produce
+  // B with an empty transcript and no progress on that lesson.
+
+  beforeEach(async () => {
+    const dbMod = await import("@/lib/db");
+    await dbMod.prisma.$disconnect();
+    const svc = await import("@/lib/service");
+    prisma = dbMod.prisma;
+    sendTurn = svc.sendTurn;
+
+    await prisma.learner.deleteMany();
+    await prisma.message.deleteMany();
+    await prisma.progress.deleteMany();
+    await prisma.lesson.deleteMany();
+    await prisma.course.deleteMany();
+  });
+
+  async function seedOneLesson() {
+    const course = await prisma.course.create({
+      data: { slug: "iso-course", title: "Iso", description: "iso" },
+    });
+    const lesson = await prisma.lesson.create({
+      data: {
+        courseId: course.id,
+        slug: "iso-1",
+        title: "Iso 1",
+        order: 1,
+        script: JSON.stringify([
+          { kind: "tutor", content: "Hi there." },
+          { kind: "learner", prompt: "ready", expect: ["yes", "ok"] },
+          { kind: "tutor", content: "Great." },
+          { kind: "learner", prompt: "done", expect: ["done"] },
+          { kind: "tutor", content: "Lesson complete." },
+        ]),
+      },
+    });
+    return { course, lesson };
+  }
+
+  it("register A → log in A → drive a turn → log out → log in B → A's transcript + progress invisible to B", async () => {
+    const { lesson } = await seedOneLesson();
+
+    // Register two learners via the real route handler.
+    const registerPOST = (await import("@/app/api/auth/register/route")).POST;
+    const loginPOST = (await import("@/app/api/auth/login/route")).POST;
+    const logoutPOST = (await import("@/app/api/auth/logout/route")).POST;
+    const meGET = (await import("@/app/api/auth/me/route")).GET;
+
+    function json(body: unknown) {
+      return {
+        method: "POST" as const,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      };
+    }
+
+    const regA = await registerPOST(
+      new Request("http://localhost/register", json({
+        email: "alice@tdr.test",
+        password: "hunter22-correcthorse",
+      })),
+    );
+    expect(regA.status).toBe(200);
+    const learnerA = ((await regA.json()) as { id: string }).id;
+
+    const regB = await registerPOST(
+      new Request("http://localhost/register", json({
+        email: "bob@tdr.test",
+        password: "hunter22-correcthorse",
+      })),
+    );
+    expect(regB.status).toBe(200);
+    const learnerB = ((await regB.json()) as { id: string }).id;
+    expect(learnerB).not.toBe(learnerA);
+
+    // Log in as A and drive a turn via the service layer using the real
+    // learner id (cookies() throws outside of a request scope here, so we
+    // reach into the service directly with the registered id).
+    const loginA = await loginPOST(
+      new Request("http://localhost/login", json({
+        email: "alice@tdr.test",
+        password: "hunter22-correcthorse",
+      })),
+    );
+    expect(loginA.status).toBe(200);
+    const cookieA = loginA.headers.get("set-cookie")!;
+    const m = cookieA.match(/tdr_session=([^;]+)/);
+    expect(m).not.toBeNull();
+
+    const meA = await meGET(
+      new Request("http://localhost/me", {
+        headers: { cookie: `tdr_session=${m![1]}` },
+      }),
+    );
+    const meABody = (await meA.json()) as { learner: { id: string } | null };
+    expect(meABody.learner?.id).toBe(learnerA);
+
+    await sendTurn({
+      lessonId: lesson.id,
+      learnerId: learnerA,
+      content: "yes",
+    });
+
+    // A has a real transcript and progress row.
+    const aMessagesBefore = await prisma.message.findMany({
+      where: { lessonId: lesson.id, learnerId: learnerA },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(aMessagesBefore.map((m) => m.role)).toEqual(["tutor", "learner", "tutor"]);
+    const aProgressBefore = await prisma.progress.findUnique({
+      where: { learnerId_lessonId: { learnerId: learnerA, lessonId: lesson.id } },
+    });
+    expect(aProgressBefore?.completed).toBe(false);
+
+    // B has nothing on it.
+    const bMessagesBefore = await prisma.message.findMany({
+      where: { lessonId: lesson.id, learnerId: learnerB },
+    });
+    expect(bMessagesBefore).toEqual([]);
+    const bProgressBefore = await prisma.progress.findUnique({
+      where: { learnerId_lessonId: { learnerId: learnerB, lessonId: lesson.id } },
+    });
+    expect(bProgressBefore).toBeNull();
+
+    // Log A out (cookie clear).
+    const logout = await logoutPOST();
+    expect(logout.status).toBe(200);
+
+    // Log in as B; the new cookie must resolve to B.
+    const loginB = await loginPOST(
+      new Request("http://localhost/login", json({
+        email: "bob@tdr.test",
+        password: "hunter22-correcthorse",
+      })),
+    );
+    expect(loginB.status).toBe(200);
+    const cookieB = loginB.headers.get("set-cookie")!;
+    const mb = cookieB.match(/tdr_session=([^;]+)/);
+    expect(mb).not.toBeNull();
+    const meB = await meGET(
+      new Request("http://localhost/me", {
+        headers: { cookie: `tdr_session=${mb![1]}` },
+      }),
+    );
+    const meBBody = (await meB.json()) as { learner: { id: string } | null };
+    expect(meBBody.learner?.id).toBe(learnerB);
+
+    // Login round-trip assertion: re-login the same A and confirm the new
+    // cookie subject matches the original learner id.
+    const reLoginA = await loginPOST(
+      new Request("http://localhost/login", json({
+        email: "alice@tdr.test",
+        password: "hunter22-correcthorse",
+      })),
+    );
+    expect(reLoginA.status).toBe(200);
+    const cookieRA = reLoginA.headers.get("set-cookie")!;
+    const mra = cookieRA.match(/tdr_session=([^;]+)/);
+    const meRA = await meGET(
+      new Request("http://localhost/me", {
+        headers: { cookie: `tdr_session=${mra![1]}` },
+      }),
+    );
+    const meRABody = (await meRA.json()) as { learner: { id: string } | null };
+    expect(meRABody.learner?.id).toBe(learnerA);
+
+    // A's transcript and progress are unchanged across both logins.
+    const aMessagesAfter = await prisma.message.findMany({
+      where: { lessonId: lesson.id, learnerId: learnerA },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(aMessagesAfter.map((m) => m.id)).toEqual(aMessagesBefore.map((m) => m.id));
+    const aProgressAfter = await prisma.progress.findUnique({
+      where: { learnerId_lessonId: { learnerId: learnerA, lessonId: lesson.id } },
+    });
+    expect(aProgressAfter?.id).toBe(aProgressBefore?.id);
+  });
+});

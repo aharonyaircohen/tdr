@@ -16,7 +16,7 @@ export default async function CoursePage({ params }: { params: Promise<Params> }
   const course = await getCourseWithLessons(slug);
   if (!course) notFound();
 
-  const learnerId = getCurrentLearnerId();
+  const learnerId = await getCurrentLearnerId();
   const resume = pickResumeLesson(course.lessons, learnerId);
 
   // The course overview is reachable from the lesson header's back-link. We

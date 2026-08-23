@@ -20,7 +20,7 @@ export default async function LessonPage({ params }: { params: Promise<Params> }
   const lesson = course.lessons.find((l) => l.slug === lessonSlug);
   if (!lesson) notFound();
 
-  const learnerId = getCurrentLearnerId();
+  const learnerId = await getCurrentLearnerId();
 
   // Sequential-path rule: gate the route on the same `canEnterLesson` policy
   // the UI uses. A direct URL for a locked future lesson redirects to the

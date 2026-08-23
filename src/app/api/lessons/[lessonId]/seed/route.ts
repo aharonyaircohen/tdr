@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ lessonId: string }> },
 ) {
   const { lessonId } = await params;
-  const learnerId = getCurrentLearnerId();
+  const learnerId = await getCurrentLearnerId();
   try {
     await requireEnterableLesson(lessonId, learnerId);
   } catch (error) {

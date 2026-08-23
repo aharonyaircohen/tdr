@@ -46,7 +46,12 @@ async function waitForReady(url: string, label: string, timeoutMs: number) {
   throw new Error(`${label} did not become ready at ${url} within ${timeoutMs}ms`);
 }
 
-test.beforeAll(async () => {
+test.beforeAll(async ({}, testInfo) => {
+  // The default hook timeout (60s) is the playwright-config test timeout.
+  // Cold-compiling the second `next dev`'s `/` route can exceed that on CI,
+  // so we extend it explicitly here to match waitForReady's own 120s budget.
+  testInfo.setTimeout(180_000);
+
   // Spawn a second dev server as bob. It writes to the same SQLite file as
   // alice's server so we can prove DB-level isolation through the UI.
   bobServer = spawn(

@@ -46,7 +46,7 @@ export type LearnerDashboard = {
 };
 
 export async function getLearnerDashboard(): Promise<LearnerDashboard> {
-  const learnerId = getCurrentLearnerId();
+  const learnerId = await getCurrentLearnerId();
   const courses = await prisma.course.findMany({
     include: {
       lessons: {
@@ -91,13 +91,14 @@ export async function listCourses(): Promise<CourseSummary[]> {
 }
 
 export async function getCourseWithLessons(slug: string) {
+  const learnerId = await getCurrentLearnerId();
   const course = await prisma.course.findUnique({
     where: { slug },
     include: {
       lessons: {
         orderBy: { order: "asc" },
         include: {
-          progress: { where: { learnerId: getCurrentLearnerId() } },
+          progress: { where: { learnerId } },
         },
       },
     },
@@ -106,15 +107,16 @@ export async function getCourseWithLessons(slug: string) {
 }
 
 export async function getLessonWithMessages(lessonId: string) {
+  const learnerId = await getCurrentLearnerId();
   return prisma.lesson.findUnique({
     where: { id: lessonId },
     include: {
       course: true,
       messages: {
-        where: { learnerId: getCurrentLearnerId() },
+        where: { learnerId },
         orderBy: { createdAt: "asc" },
       },
-      progress: { where: { learnerId: getCurrentLearnerId() } },
+      progress: { where: { learnerId } },
     },
   });
 }

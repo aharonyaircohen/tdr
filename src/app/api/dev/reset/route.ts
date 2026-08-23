@@ -15,8 +15,11 @@ export async function POST() {
   }
 
   // Wipe all learner state. Opening tutor lines are created lazily on first
-  // lesson entry by the seed endpoint or by sendTurn.
+  // lesson entry by the seed endpoint or by sendTurn. Learner rows are
+  // deleted last so they don't race with the lesson-scoped cascade that
+  // would otherwise leave dangling Message / Progress rows.
   await prisma.message.deleteMany();
   await prisma.progress.deleteMany();
+  await prisma.learner.deleteMany();
   return NextResponse.json({ ok: true });
 }
