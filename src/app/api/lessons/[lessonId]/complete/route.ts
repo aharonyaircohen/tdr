@@ -12,7 +12,7 @@ export async function POST(
 ) {
   try {
     const { lessonId } = await params;
-    await markLessonComplete(lessonId, getCurrentLearnerId());
+    await markLessonComplete(lessonId, await getCurrentLearnerId());
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (e instanceof NotFoundError) {

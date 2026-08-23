@@ -52,7 +52,7 @@ export async function POST(
     const { lessonId } = await params;
     const result = await sendTurn({
       lessonId,
-      learnerId: getCurrentLearnerId(),
+      learnerId: await getCurrentLearnerId(),
       content,
     });
     return NextResponse.json(result);

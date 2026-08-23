@@ -1,5 +1,6 @@
 // TDR data model — vertical slice
-// Models: Course, Lesson, Message (chat turn), Progress (learner × lesson)
+// Models: Course, Lesson, Message (chat turn), Progress (learner × lesson),
+// Learner (registered account).
 
 generator client {
   provider = "prisma-client-js"
@@ -8,6 +9,13 @@ generator client {
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
+}
+
+model Learner {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
 }
 
 model Course {

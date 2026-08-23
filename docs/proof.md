@@ -44,6 +44,17 @@ in this doc builds on the earlier ones.
   most-recent unfinished course the learner touched. Touching course A,
   then B, then A again correctly returns the Continue card to A — no stale
   ordering from before the most-recent activity.
+- **Issue #23** — TDR becomes the host half of the
+  [`brand-chat-access`](https://kody.dev/docs/brand-chat-access)
+  delegated-client contract. A real `Learner` model + register/login/logout
+  flow with scrypt-hashed passwords and HMAC-signed session cookies, an
+  auto-generated RS256 keypair served at `/.well-known/jwks.json`, and a
+  dashboard **Open Kody Chat** form that POSTs a single-use assertion
+  (`sub`, `aud`, `iss`, `iat`, `exp`, `jti`, `tenant_id`, `brand_slug`,
+  `exp - iat = 300s`, fresh `jti` per render) to
+  `https://kody.dev/api/client-session/external-launch`. The existing
+  `CURRENT_LEARNER_ID` env-var fallback still works so the two-learner
+  isolation spec remains valid.
 
 All transcripts and screenshots below were captured against the real running
 app on the branch for the change described by each section.
