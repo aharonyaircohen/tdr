@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- #23: TDR delegates its learner session to Kody via the Brand Chat contr… ([#24](https://github.com/aharonyaircohen/tdr/pull/24)) — @aharonyaircohen
 - #21: Make lesson transcripts learner-owned without losing demo history ([#22](https://github.com/aharonyaircohen/tdr/pull/22)) — @aharonyaircohen
 - #21: Make lesson transcripts learner-owned without losing demo history — `Message.learnerId` is now required (no schema default), every read/write path in `service.ts` and the seed endpoint scopes by `getCurrentLearnerId()`, the per-learner seed idempotency key prevents cross-learner collisions, dev reset wipes everything and pre-seeds openings for the current learner only, and a `scripts/backfill-learner-ownership.mjs` upgrade step preserves every pre-#21 message id/content under `demo-learner`. `CURRENT_LEARNER_ID` remains a temporary identity source (no login).
 - #19: Update cumulative proof for completed transcript and course activi… ([#20](https://github.com/aharonyaircohen/tdr/pull/20)) — @aharonyaircohen
